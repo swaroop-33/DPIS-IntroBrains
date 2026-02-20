@@ -50,13 +50,18 @@ function ResultDisplay({ result, showForensic = false }) {
 
     const pps = result.pps ?? {}
     const sdi = result.sdi ?? {}
-    const emo = result.emotion ?? result.emotion ?? {}
+    const emo = result.emotion ?? {}
     const prop = result.propaganda ?? {}
     const vir = result.virality ?? {}
     const cf = result.counterfactual ?? result.explanation?.counterfactual_analysis ?? {}
     const expl = result.explanation ?? {}
     const foren = result.forensic ?? {}
     const perf = result.performance ?? {}
+    // v3.3
+    const adv = result.adversarial ?? {}
+    const plat = result.platform ?? {}
+    const cred = result.credibility_erosion ?? {}
+    const calib = result.calibration ?? {}
 
     const ppsScore = Number(pps.score ?? 0)
     const ppsC = scoreClass(ppsScore)
@@ -268,6 +273,93 @@ function ResultDisplay({ result, showForensic = false }) {
                         <p style={{ marginTop: 10, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                             Source type: <code style={{ fontSize: '0.75rem' }}>{foren.url_source}</code>
                         </p>
+                    )}
+                </SectionCard>
+            )}
+
+            {/* ── v3.3: Platform Amplification ── */}
+            {plat.platform && (
+                <SectionCard title="PLATFORM AMPLIFICATION — Propagation Coefficient">
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+                        <div className="score-card" style={{ flex: '0 0 auto', minWidth: 100 }}>
+                            <div className="score-card-label">Coefficient</div>
+                            <div className="score-card-value score-cyan">
+                                {Number(plat.amplification_coefficient ?? 1).toFixed(2)}×
+                            </div>
+                            <div className="score-card-detail">{plat.platform}</div>
+                        </div>
+                        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+                            {plat.propagation_risk_note}
+                        </p>
+                    </div>
+                </SectionCard>
+            )}
+
+            {/* ── v3.3: Adversarial Evasion Detection ── */}
+            {(adv.evasion_detected || adv.evasion_score > 0) && (
+                <SectionCard title="ADVERSARIAL EVASION DETECTION">
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: adv.evasion_signals?.length ? 12 : 0 }}>
+                        <ScoreCard label="Evasion Score" score={adv.evasion_score} detail={adv.evasion_detected ? 'OBFUSCATION ACTIVE' : 'None detected'} />
+                    </div>
+                    {adv.evasion_signals?.length > 0 && (
+                        <ul className="signals-list">
+                            {adv.evasion_signals.map((s, i) => (
+                                <li key={i} className="signal-item">
+                                    <span className="signal-dot" />
+                                    <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{s}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </SectionCard>
+            )}
+
+            {/* ── v3.3: Credibility Erosion Index ── */}
+            {cred.credibility_erosion_index != null && (
+                <SectionCard title="CREDIBILITY EROSION INDEX">
+                    <div style={{ marginBottom: 12 }}>
+                        <ScoreCard
+                            label="Credibility Erosion Index"
+                            score={cred.credibility_erosion_index}
+                            detail={cred.erosion_level ?? ''}
+                        />
+                    </div>
+                    {cred.erosion_drivers?.length > 0 && (
+                        <ul className="signals-list">
+                            {cred.erosion_drivers.map((d, i) => (
+                                <li key={i} className="signal-item">
+                                    <span className="signal-dot" />
+                                    <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{d}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </SectionCard>
+            )}
+
+            {/* ── v3.3: Calibration & Confidence ── */}
+            {calib.confidence_band && (
+                <SectionCard title="CALIBRATION — Confidence Assessment">
+                    <div className="score-grid" style={{ marginBottom: 12 }}>
+                        <ScoreCard label="Data Quality" score={calib.data_quality_score} detail={calib.confidence_band} />
+                        <div className="score-card">
+                            <div className="score-card-label">PPS Confidence Interval</div>
+                            <div className="score-card-value score-cyan">
+                                [{Number(calib.confidence_interval?.lower ?? 0).toFixed(1)},&nbsp;
+                                {Number(calib.confidence_interval?.upper ?? 0).toFixed(1)}]
+                            </div>
+                            <div className="score-card-detail">at {calib.confidence_band} confidence</div>
+                        </div>
+                    </div>
+                    {calib.calibration_notes?.length > 0 && (
+                        <ul className="signals-list">
+                            {calib.calibration_notes.map((n, i) => (
+                                <li key={i} className="signal-item">
+                                    <span className="signal-dot" />
+                                    <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{n}</span>
+                                </li>
+                            ))}
+                        </ul>
                     )}
                 </SectionCard>
             )}

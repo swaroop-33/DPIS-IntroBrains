@@ -1,5 +1,5 @@
 """
-DPIS — FastAPI Backend (v3.2)
+DPIS — FastAPI Backend (v3.3)
 
 Run from project ROOT:
     python -m uvicorn api.index:app --reload
@@ -21,8 +21,8 @@ from .pipeline import run_pipeline
 
 app = FastAPI(
     title="DPIS — Deepfake Psychological Impact Shield",
-    version="3.2.0",
-    description="Multi-modal AI forensic analysis: deepfake, emotion, propaganda, virality, PPS.",
+    version="3.3.0",
+    description="Multi-modal AI forensic + adversarial intelligence: deepfake, emotion, propaganda, virality, PPS, CEI.",
 )
 
 MAX_FILE_MB = {"video": 50, "audio": 20, "image": 10}
@@ -35,19 +35,19 @@ MAX_FILE_MB = {"video": 50, "audio": 20, "image": 10}
 def root():
     return {
         "service": "DPIS — Deepfake Psychological Impact Shield",
-        "version": "3.2.0",
+        "version": "3.3.0",
         "status": "running",
         "endpoints": {
-            "text_analysis": "POST /analyze",
+            "text_analysis":  "POST /analyze",
             "media_analysis": "POST /analyze/media",
-            "docs": "/docs",
+            "docs":           "/docs",
         },
     }
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "3.2.0"}
+    return {"status": "ok", "version": "3.3.0"}
 
 
 # ─────────────────────────────────────────────
@@ -63,6 +63,8 @@ def analyze(req: AnalyzeRequest):
             text=req.text.strip(),
             input_type=req.input_type,
             simulated_deepfake_score=req.simulated_deepfake_score,
+            media_url=None,
+            has_media=False,
         )
     except Exception:
         traceback.print_exc()
@@ -170,14 +172,16 @@ async def analyze_media(
 
         caption = text.strip() if text and text.strip() else "neutral media content"
 
-        # Platform multiplier for social URL sources
-        platform_multiplier = 1.05 if (url_source and url_source.startswith("ytdlp:")) else 1.0
+        # Real image AI probability for credibility erosion computation
+        _img_ai_prob = round(image_result.get("ai_image_probability", 0.0) * 100, 2)
 
         pipeline_result = run_pipeline(
             text=caption,
             input_type="media",
             simulated_deepfake_score=None,
-            platform_multiplier=platform_multiplier,
+            media_url=media_url,
+            has_media=True,
+            image_ai_probability=_img_ai_prob,
         )
 
         elapsed_ms = round((time.time() - start) * 1000, 2)
