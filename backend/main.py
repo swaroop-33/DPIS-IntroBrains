@@ -1,7 +1,10 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from typing import Optional
 import traceback
+import time
 
+# Relative imports — this file must be imported via api/index.py which sets sys.path.
+# Do NOT run `uvicorn backend.main:app` from project root; use `uvicorn api.index:app`.
 from models import AnalyzeRequest
 from pipeline import run_pipeline
 
@@ -22,6 +25,7 @@ def root():
         "docs": "/docs",
     }
 
+
 # ─────────────────────────────────────────────
 # Health
 # ─────────────────────────────────────────────
@@ -29,8 +33,9 @@ def root():
 def health():
     return {"status": "ok"}
 
+
 # ─────────────────────────────────────────────
-# Text Analysis (Existing)
+# Text Analysis
 # ─────────────────────────────────────────────
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest):
@@ -47,8 +52,9 @@ def analyze(req: AnalyzeRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
 # ─────────────────────────────────────────────
-# Media Analysis (Fixed)
+# Media Analysis
 # ─────────────────────────────────────────────
 @app.post("/analyze/media")
 async def analyze_media(
@@ -57,16 +63,17 @@ async def analyze_media(
     image: Optional[UploadFile] = File(default=None),
     text: Optional[str] = Form(default=""),
 ):
+
     from core.media_forensics import (
         analyze_video_frames,
         analyze_audio_waveform,
         analyze_image_artifacts,
         compute_forensic_pps,
     )
+
     from modules.emotion import analyze_emotion
     from modules.propaganda import analyze_propaganda
     from modules.virality import estimate_virality
-    import time
 
     start = time.time()
 
@@ -74,8 +81,9 @@ async def analyze_media(
     audio_bytes = await audio.read() if audio else None
     image_bytes = await image.read() if image else None
 
-    # Size protection
-    def size_mb(data): return len(data) / (1024 * 1024)
+    # Size limits
+    def size_mb(data):
+        return len(data) / (1024 * 1024)
 
     if video_bytes and size_mb(video_bytes) > 20:
         raise HTTPException(status_code=400, detail="Video too large (max 20MB)")
@@ -84,6 +92,7 @@ async def analyze_media(
     if image_bytes and size_mb(image_bytes) > 5:
         raise HTTPException(status_code=400, detail="Image too large (max 5MB)")
 
+    # Run forensic analysis
     video_result = analyze_video_frames(video_bytes) if video_bytes else {
         "deepfake_probability": 0.0,
         "signals": ["No video file provided"],
@@ -99,7 +108,9 @@ async def analyze_media(
         "signals": ["No image file provided"],
     }
 
+    # Text fallback
     fallback_text = text.strip() if text.strip() else "neutral content"
+
     emotion = analyze_emotion(fallback_text)
     propaganda = analyze_propaganda(fallback_text)
     polarization_intensity = propaganda.pop("_polarization_intensity", 0.0)
