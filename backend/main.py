@@ -170,39 +170,49 @@ async def analyze_media(
 
         caption = text.strip() if text and text.strip() else "neutral media content"
 
+        # Platform multiplier for social URL sources
+        platform_multiplier = 1.05 if (url_source and url_source.startswith("ytdlp:")) else 1.0
+
         pipeline_result = run_pipeline(
             text=caption,
             input_type="media",
             simulated_deepfake_score=None,
+            platform_multiplier=platform_multiplier,
         )
 
         elapsed_ms = round((time.time() - start) * 1000, 2)
 
+        # Override stub forensic layer from pipeline with real media analysis data
+        forensic_override = {
+            "video_deepfake_probability": round(
+                video_result.get("deepfake_probability", 0.0) * 100, 2
+            ),
+            "audio_spoof_probability": round(
+                audio_result.get("spoof_probability", 0.0) * 100, 2
+            ),
+            "image_ai_probability": round(
+                image_result.get("ai_image_probability", 0.0) * 100, 2
+            ),
+            "signals": {
+                "video": video_result.get("signals", []),
+                "audio": audio_result.get("signals", []),
+                "image": image_result.get("signals", []),
+            },
+            "media_stats": {
+                "video": video_result.get("frame_stats"),
+                "audio": audio_result.get("audio_stats"),
+                "image": image_result.get("image_stats"),
+            },
+            "url_source": url_source,
+        }
+
         return {
             **pipeline_result,
-            "forensic": {
-                "video_deepfake_probability": round(
-                    video_result.get("deepfake_probability", 0.0) * 100, 2
-                ),
-                "audio_spoof_probability": round(
-                    audio_result.get("spoof_probability", 0.0) * 100, 2
-                ),
-                "image_ai_probability": round(
-                    image_result.get("ai_image_probability", 0.0) * 100, 2
-                ),
-                "signals": {
-                    "video": video_result.get("signals", []),
-                    "audio": audio_result.get("signals", []),
-                    "image": image_result.get("signals", []),
-                },
-                "media_stats": {
-                    "video": video_result.get("frame_stats"),
-                    "audio": audio_result.get("audio_stats"),
-                    "image": image_result.get("image_stats"),
-                },
-                "url_source": url_source,
+            "forensic": forensic_override,
+            "performance": {
+                "execution_time_ms": elapsed_ms,
+                "input_type": "media",
             },
-            "performance": {"execution_time_ms": elapsed_ms},
         }
 
     except HTTPException:

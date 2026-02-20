@@ -1,103 +1,158 @@
 """
-DPIS — PPS Aggregator + Societal Disruption Index (Calibrated Stable)
+DPIS — PPS Aggregator + Societal Disruption Index (v3.2)
 
-Controlled nonlinear amplification.
-No automatic 100 saturation.
-Strong stacking but realistic ceiling.
+Threat bands (0–20 LOW, 21–40 ELEVATED, 41–60 MODERATE, 61–80 HIGH, 81–100 CRITICAL)
+SDI includes spread_risk_assessment for downstream reporting.
+PPS includes interpretation for dashboard display.
 """
 
 from typing import Dict, Any
 
 
-def _threat_level(score: float) -> str:
-    if score <= 30:
-        return "Low Psychological Threat"
+# ──────────────────────────────────────────────────────────────────────────────
+# Threat classification
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _classify_pps(score: float) -> tuple[str, str]:
+    """Returns (threat_level, interpretation)."""
+    if score <= 20:
+        return (
+            "LOW",
+            "Content presents negligible psychological manipulation risk. "
+            "No significant disinformation indicators detected.",
+        )
+    elif score <= 40:
+        return (
+            "ELEVATED",
+            "Content exhibits limited but detectable persuasion signals. "
+            "Monitoring is advised; no immediate intervention required.",
+        )
     elif score <= 60:
-        return "Moderate Manipulation Risk"
+        return (
+            "MODERATE",
+            "Content demonstrates measurable emotional and rhetorical manipulation. "
+            "Fact-verification and source authentication are recommended.",
+        )
     elif score <= 80:
-        return "High Persuasion Threat"
+        return (
+            "HIGH",
+            "Content carries substantial disinformation and psychological manipulation potential. "
+            "Counter-narrative deployment and platform flagging are warranted.",
+        )
     else:
-        return "Severe Societal Disruption Potential"
+        return (
+            "CRITICAL",
+            "Content exhibits maximum-risk multi-layered psychological warfare characteristics. "
+            "Immediate escalation, platform-level suppression, and stakeholder alert are required.",
+        )
 
 
-def _disruption_level(sdi: float) -> str:
-    if sdi <= 25:
-        return "Low"
-    elif sdi <= 55:
-        return "Moderate"
+def _classify_sdi(sdi: float) -> tuple[str, str]:
+    """Returns (disruption_level, spread_risk_assessment)."""
+    if sdi <= 20:
+        return (
+            "NEGLIGIBLE",
+            "Societal impact probability is negligible. Content is unlikely to propagate beyond origin network.",
+        )
+    elif sdi <= 40:
+        return (
+            "LOW",
+            "Content may achieve limited organic reach. Social disruption potential is below threshold for active response.",
+        )
+    elif sdi <= 60:
+        return (
+            "MODERATE",
+            "Content carries moderate cross-platform spread risk. Polarization and echo-chamber seeding are possible.",
+        )
+    elif sdi <= 80:
+        return (
+            "HIGH",
+            "Content exhibits high societal disruption potential. Viral amplification via high-arousal networks is probable.",
+        )
     else:
-        return "Severe"
+        return (
+            "SEVERE",
+            "Content poses severe societal destabilization risk. Multi-platform cascade propagation is highly likely if unrestricted.",
+        )
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PPS Computation
+# ──────────────────────────────────────────────────────────────────────────────
 
 def compute_pps(
     deepfake_score: float,
     emotion_score: float,
     manipulation_score: float,
     virality_score: float,
+    platform_multiplier: float = 1.0,
 ) -> Dict[str, Any]:
+    """
+    Weighted multi-signal PPS aggregation with controlled nonlinear escalation.
+    platform_multiplier: minor boost for public social platform URLs (e.g. 1.05).
+    """
 
-    # Base weighted score
-    df_contrib = 0.30 * deepfake_score
+    # Base weighted contributions
+    df_contrib = 0.28 * deepfake_score
     ea_contrib = 0.30 * emotion_score
-    mp_contrib = 0.25 * manipulation_score
+    mp_contrib = 0.27 * manipulation_score
     vr_contrib = 0.15 * virality_score
 
     base_score = df_contrib + ea_contrib + mp_contrib + vr_contrib
 
-    # Controlled arousal amplification
-    arousal_factor = (emotion_score / 100) * (virality_score / 100)
+    # High-arousal nonlinear amplification
+    arousal_factor = (emotion_score / 100.0) * (virality_score / 100.0)
     if arousal_factor > 0.30:
-        base_score *= 1 + (arousal_factor * 0.25)
+        base_score *= 1 + (arousal_factor * 0.22)
 
-    # Controlled multi-signal escalation
+    # Multi-signal stacking escalation
     high_dims = sum(
-        score > 65
-        for score in [
-            deepfake_score,
-            emotion_score,
-            manipulation_score,
-            virality_score,
-        ]
+        s > 65
+        for s in [deepfake_score, emotion_score, manipulation_score, virality_score]
     )
-
     if high_dims >= 2:
-        base_score *= 1 + (0.05 * high_dims)
+        base_score *= 1 + (0.045 * high_dims)
 
-    # Softer nonlinear scaling
-    normalized = min(base_score / 100, 1.2)
-    escalated = normalized ** 1.08
+    # Platform origin risk adjustment
+    base_score *= platform_multiplier
 
-    pps_score = round(min(escalated * 100, 100), 2)
+    # Nonlinear normalization — soft ceiling prevents trivial saturation
+    normalized = min(base_score / 100.0, 1.2)
+    escalated  = normalized ** 1.08
+    pps_score  = round(min(escalated * 100.0, 100.0), 2)
+
+    threat_level, interpretation = _classify_pps(pps_score)
 
     return {
         "score": pps_score,
-        "threat_level": _threat_level(pps_score),
+        "threat_level": threat_level,
+        "interpretation": interpretation,
         "breakdown": {
-            "deepfake_contribution": round(df_contrib, 2),
-            "emotion_contribution": round(ea_contrib, 2),
+            "deepfake_contribution":     round(df_contrib, 2),
+            "emotion_contribution":      round(ea_contrib, 2),
             "manipulation_contribution": round(mp_contrib, 2),
-            "virality_contribution": round(vr_contrib, 2),
+            "virality_contribution":     round(vr_contrib, 2),
         },
         "interaction_effects": {
             "arousal_multiplier_applied": arousal_factor > 0.30,
-            "high_dimension_count": high_dims,
-        },
-        "score_rationale": {
-            "deepfake": "Authenticity breach risk — erodes trust in digital reality",
-            "emotion": "Psychological leverage — high-arousal emotion drives compliance",
-            "manipulation": "Intent-based framing tactics that bypass rational scrutiny",
-            "virality": "Amplification potential — determines societal spread",
-            "interaction": "Stacked high-risk signals amplify psychological impact nonlinearly",
+            "high_dimension_count":       high_dims,
+            "platform_multiplier":        round(platform_multiplier, 3),
         },
     }
 
 
-def compute_sdi(pps_score: float, virality_score: float) -> Dict[str, Any]:
+# ──────────────────────────────────────────────────────────────────────────────
+# SDI Computation
+# ──────────────────────────────────────────────────────────────────────────────
 
+def compute_sdi(pps_score: float, virality_score: float) -> Dict[str, Any]:
     sdi_score = round(pps_score * (virality_score / 100.0), 2)
     sdi_score = min(max(sdi_score, 0.0), 100.0)
 
+    disruption_level, spread_risk_assessment = _classify_sdi(sdi_score)
+
     return {
         "sdi_score": sdi_score,
-        "disruption_level": _disruption_level(sdi_score),
+        "disruption_level": disruption_level,
+        "spread_risk_assessment": spread_risk_assessment,
     }
