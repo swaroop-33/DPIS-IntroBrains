@@ -1,8 +1,7 @@
 fastapi
-uvicorn[standard]
-python-multipart
-opencv-python-headless
-librosa
+uvicorn
+pydantic
 numpy
-Pillow
+pillow
+librosa
 soundfile
