@@ -1,35 +1,30 @@
 """
 DPIS — Pipeline Orchestrator (v3.0)
-
-Upgrades:
-• Psychological Density Index (PDI)
-• Cross-module stacking awareness
-• Cleaner signal passing
-• Hackathon-optimized output clarity
+Hardened Version — Safe dictionary access, no crash on missing keys,
+no KeyError propagation, stable for FastAPI 500 prevention.
 """
 
 from typing import Optional
 import time
 
-from modules.deepfake import analyze_deepfake
-from modules.emotion import analyze_emotion
-from modules.propaganda import analyze_propaganda
-from modules.virality import estimate_virality
-from modules.pps import compute_pps, compute_sdi
-from modules.explainability import build_explanation
+from .modules.deepfake import analyze_deepfake
+from .modules.emotion import analyze_emotion
+from .modules.propaganda import analyze_propaganda
+from .modules.virality import estimate_virality
+from .modules.pps import compute_pps, compute_sdi
+from .modules.explainability import build_explanation
+
+
+def _safe_get(d: dict, key: str, default=0.0):
+    if not isinstance(d, dict):
+        return default
+    return d.get(key, default)
 
 
 def _compute_pdi(text: str, manipulation_score: float, emotion_score: float) -> float:
-    """
-    Psychological Density Index
-    Measures manipulation intensity per 100 tokens.
-    """
     tokens = max(len(text.split()), 1)
-
     density_factor = min((manipulation_score + emotion_score) / 200, 1.0)
-
     length_modifier = 100 / tokens if tokens < 100 else 1.0
-
     pdi = min(density_factor * length_modifier * 100, 100)
     return round(pdi, 2)
 
@@ -42,51 +37,64 @@ def run_pipeline(
 
     start_time = time.time()
 
-    # ── 1. Deepfake Detection ──────────────────────────────────────────────
+    # ── 1. Deepfake Detection ─────────────────────────────
     deepfake = analyze_deepfake(
         text=text,
         input_type=input_type,
         simulated_deepfake_score=simulated_deepfake_score,
-    )
+    ) or {}
 
-    # ── 2. Emotional Amplification ─────────────────────────────────────────
-    emotion = analyze_emotion(text)
+    deepfake_score = _safe_get(deepfake, "final_deepfake_score", 0.0)
 
-    # ── 3. Propaganda Detection ────────────────────────────────────────────
-    propaganda = analyze_propaganda(text)
+    # ── 2. Emotion Analysis ───────────────────────────────
+    emotion = analyze_emotion(text) or {}
+
+    amplification_score = _safe_get(emotion, "amplification_score", 0.0)
+    density_scores = emotion.get("density_scores", {}) if isinstance(emotion, dict) else {}
+    fear_score = density_scores.get("fear", 0.0)
+    anger_score = density_scores.get("anger", 0.0)
+
+    # ── 3. Propaganda Detection ───────────────────────────
+    propaganda = analyze_propaganda(text) or {}
+
+    manipulation_score = _safe_get(propaganda, "manipulation_score", 0.0)
     polarization_intensity = propaganda.pop("_polarization_intensity", 0.0)
 
-    # ── 4. Virality Estimation ─────────────────────────────────────────────
+    # ── 4. Virality Estimation ────────────────────────────
     virality = estimate_virality(
-        emotional_amplification=emotion["amplification_score"],
-        manipulation_score=propaganda["manipulation_score"],
+        emotional_amplification=amplification_score,
+        manipulation_score=manipulation_score,
         polarization_intensity=polarization_intensity,
-        fear_score=emotion["density_scores"].get("fear", 0.0),
-        anger_score=emotion["density_scores"].get("anger", 0.0),
-    )
+        fear_score=fear_score,
+        anger_score=anger_score,
+    ) or {}
 
-    # ── 5. PPS Aggregation ─────────────────────────────────────────────────
+    virality_score = _safe_get(virality, "virality_score", 0.0)
+
+    # ── 5. PPS Aggregation ────────────────────────────────
     pps = compute_pps(
-        deepfake_score=deepfake["final_deepfake_score"],
-        emotion_score=emotion["amplification_score"],
-        manipulation_score=propaganda["manipulation_score"],
-        virality_score=virality["virality_score"],
-    )
+        deepfake_score=deepfake_score,
+        emotion_score=amplification_score,
+        manipulation_score=manipulation_score,
+        virality_score=virality_score,
+    ) or {}
 
-    # ── 6. Societal Disruption Index ───────────────────────────────────────
+    pps_score = _safe_get(pps, "score", 0.0)
+
+    # ── 6. Societal Disruption Index ──────────────────────
     sdi = compute_sdi(
-        pps_score=pps["score"],
-        virality_score=virality["virality_score"],
-    )
+        pps_score=pps_score,
+        virality_score=virality_score,
+    ) or {}
 
-    # ── 7. Psychological Density Index ─────────────────────────────────────
+    # ── 7. Psychological Density Index ────────────────────
     pdi = _compute_pdi(
         text=text,
-        manipulation_score=propaganda["manipulation_score"],
-        emotion_score=emotion["amplification_score"],
+        manipulation_score=manipulation_score,
+        emotion_score=amplification_score,
     )
 
-    # ── 8. Explainability ───────────────────────────────────────────────────
+    # ── 8. Explainability ─────────────────────────────────
     explanation = build_explanation(
         deepfake_result=deepfake,
         emotion_result=emotion,

@@ -32,7 +32,7 @@ function ScoreCard({ label, score, detail, variant }) {
     )
 }
 
-function ResultDisplay({ result }) {
+function ResultDisplay({ result, showForensic = false }) {
     const [showRaw, setShowRaw] = useState(false)
     if (!result) return null
 
@@ -170,6 +170,56 @@ function ResultDisplay({ result }) {
                             </div>
                         ))}
                     </div>
+                </div>
+            )}
+
+            {/* ── Forensic Scores (media tab only) ── */}
+            {showForensic && result.forensic && (
+                <div className="card" style={{ marginBottom: 16 }}>
+                    <p className="section-label">🔬 Forensic Detection Scores</p>
+                    <div className="score-grid" style={{ marginBottom: 12 }}>
+                        <ScoreCard
+                            label="🎬 Video Deepfake"
+                            score={result.forensic.video_deepfake_probability}
+                            detail="Frame-level analysis"
+                        />
+                        <ScoreCard
+                            label="🎙 Audio Spoof"
+                            score={result.forensic.audio_spoof_probability}
+                            detail="Spectral + GAN detection"
+                        />
+                        <ScoreCard
+                            label="🖼 AI Image"
+                            score={result.forensic.image_ai_probability}
+                            detail="Artifact pattern analysis"
+                        />
+                    </div>
+                    {result.forensic.signals && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            {Object.entries(result.forensic.signals).map(([slot, sigs]) =>
+                                sigs?.length > 0 ? (
+                                    <div key={slot}>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>
+                                            {slot} signals
+                                        </div>
+                                        <ul className="signals-list">
+                                            {sigs.map((s, i) => (
+                                                <li key={i} className="signal-item">
+                                                    <span className="signal-dot" />
+                                                    <span style={{ fontSize: 13, color: 'var(--t2)' }}>{s}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                ) : null
+                            )}
+                        </div>
+                    )}
+                    {result.forensic.url_source && (
+                        <div style={{ marginTop: 10, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            Source: <code style={{ fontSize: '0.75rem' }}>{result.forensic.url_source}</code>
+                        </div>
+                    )}
                 </div>
             )}
 

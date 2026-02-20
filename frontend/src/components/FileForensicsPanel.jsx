@@ -1,306 +1,193 @@
-/**
- * DPIS — File Forensics Panel
- *
- * Upload UI for the new "🔬 Forensic Analysis" tab.
- * Accepts optional video, audio, and image files plus an optional text transcript.
- * Submits via analyzeMedia() → renders ForensicDashboard with results.
- */
-
-import { useState, useRef } from 'react'
+import { useRef, useState } from 'react'
+import ResultDisplay from './ResultDisplay.jsx'
 import { analyzeMedia } from '../services/api.js'
-import ForensicDashboard from './ForensicDashboard.jsx'
 
-// ─── File drop-zone card ────────────────────────────────────────────────────
-function FileCard({ label, icon, accept, file, onChange, color = '#6366f1' }) {
-    const ref = useRef(null)
-    const [dragging, setDragging] = useState(false)
+const SLOTS = [
+    { key: 'video', label: 'Video', icon: '🎬', accept: 'video/*', maxMB: 50 },
+    { key: 'audio', label: 'Audio', icon: '🎙', accept: 'audio/*', maxMB: 20 },
+    { key: 'image', label: 'Image', icon: '🖼', accept: 'image/*', maxMB: 10 },
+]
 
-    const handleDrop = (e) => {
+function DropZone({ slot, file, onFile }) {
+    const inputRef = useRef()
+    const [drag, setDrag] = useState(false)
+
+    function handleDrop(e) {
         e.preventDefault()
-        setDragging(false)
+        setDrag(false)
         const f = e.dataTransfer.files[0]
-        if (f) onChange(f)
+        if (f) onFile(slot.key, f)
     }
+
+    function handleChange(e) {
+        const f = e.target.files[0]
+        if (f) onFile(slot.key, f)
+    }
+
+    const sizeMB = file ? (file.size / 1_048_576).toFixed(2) : null
+    const tooLarge = file && file.size > slot.maxMB * 1_048_576
 
     return (
         <div
-            onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-            onDragLeave={() => setDragging(false)}
+            className={`drop-zone${drag ? ' drag-over' : ''}${file ? ' has-file' : ''}`}
+            onDragOver={e => { e.preventDefault(); setDrag(true) }}
+            onDragLeave={() => setDrag(false)}
             onDrop={handleDrop}
-            onClick={() => ref.current?.click()}
-            style={{
-                border: `2px dashed ${dragging ? color : file ? color + '88' : '#2a2a3a'}`,
-                borderRadius: 10,
-                padding: '18px 14px',
-                cursor: 'pointer',
-                background: dragging ? color + '11' : file ? color + '08' : '#0e0e1a',
-                transition: 'all 0.2s',
-                textAlign: 'center',
-                flex: 1,
-                minWidth: 140,
-            }}
+            onClick={() => inputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => e.key === 'Enter' && inputRef.current?.click()}
+            aria-label={`Upload ${slot.label}`}
         >
             <input
-                ref={ref}
+                ref={inputRef}
                 type="file"
-                accept={accept}
+                accept={slot.accept}
                 style={{ display: 'none' }}
-                onChange={(e) => { const f = e.target.files[0]; if (f) onChange(f) }}
+                onChange={handleChange}
             />
-            <div style={{ fontSize: 28, marginBottom: 6 }}>{icon}</div>
-            <div style={{ color: file ? color : '#666', fontSize: 13, fontWeight: 'bold' }}>
-                {label}
-            </div>
+
             {file ? (
-                <div style={{ color: '#888', fontSize: 11, marginTop: 4, wordBreak: 'break-all' }}>
-                    ✅ {file.name}<br />
-                    <span style={{ color: '#555' }}>({(file.size / 1024).toFixed(0)} KB)</span>
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '1.5rem', marginBottom: '0.35rem' }}>{slot.icon}</div>
+                    <div style={{ fontSize: '0.83rem', fontWeight: 600, color: tooLarge ? 'var(--danger)' : 'var(--accent-cyan)', wordBreak: 'break-all' }}>
+                        {file.name}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: tooLarge ? 'var(--danger)' : 'var(--text-muted)', marginTop: '0.2rem' }}>
+                        {sizeMB} MB {tooLarge && `— exceeds ${slot.maxMB} MB limit`}
+                    </div>
+                    <button
+                        className="btn-ghost"
+                        style={{ marginTop: '0.5rem', fontSize: '0.75rem' }}
+                        onClick={e => { e.stopPropagation(); onFile(slot.key, null) }}
+                    >
+                        Remove
+                    </button>
                 </div>
             ) : (
-                <div style={{ color: '#444', fontSize: 11, marginTop: 4 }}>
-                    Click or drag & drop
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '2rem', marginBottom: '0.4rem', opacity: 0.7 }}>{slot.icon}</div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        {slot.label}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                        Drop or click · max {slot.maxMB} MB
+                    </div>
                 </div>
             )}
         </div>
     )
 }
 
-// ─── Progress state indicator ───────────────────────────────────────────────
-function ProgressStep({ label, done, active }) {
-    return (
-        <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            color: done ? '#22c55e' : active ? '#6366f1' : '#444',
-            fontSize: 13,
-            transition: 'color 0.3s',
-        }}>
-            <span>{done ? '✅' : active ? '⏳' : '○'}</span>
-            <span>{label}</span>
-        </div>
-    )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// ── Main FileForensicsPanel ────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════════
 export default function FileForensicsPanel() {
-    const [videoFile, setVideoFile] = useState(null)
-    const [audioFile, setAudioFile] = useState(null)
-    const [imageFile, setImageFile] = useState(null)
-    const [text, setText] = useState('')
+    const [files, setFiles] = useState({ video: null, audio: null, image: null })
+    const [caption, setCaption] = useState('')
     const [loading, setLoading] = useState(false)
-    const [step, setStep] = useState(null)   // 'reading' | 'analyzing' | 'done'
     const [result, setResult] = useState(null)
-    const [error, setError] = useState(null)
+    const [error, setError] = useState('')
 
-    const hasInput = videoFile || audioFile || imageFile || text.trim().length > 4
-
-    const handleReset = () => {
-        setVideoFile(null); setAudioFile(null); setImageFile(null)
-        setText(''); setResult(null); setError(null); setStep(null)
+    function handleFile(key, file) {
+        setFiles(prev => ({ ...prev, [key]: file }))
+        setError('')
     }
 
-    const handleAnalyze = async () => {
-        if (!hasInput) return
-        setLoading(true)
-        setError(null)
+    const hasFile = Object.values(files).some(Boolean)
+
+    async function handleSubmit() {
+        if (!hasFile) {
+            setError('Upload at least one media file (video, audio, or image)')
+            return
+        }
+
+        const oversized = SLOTS.find(
+            s => files[s.key] && files[s.key].size > s.maxMB * 1_048_576
+        )
+        if (oversized) {
+            setError(`${oversized.label} exceeds the ${oversized.maxMB} MB limit`)
+            return
+        }
+
+        setError('')
         setResult(null)
-        setStep('reading')
+        setLoading(true)
 
         try {
-            setTimeout(() => setStep('analyzing'), 400)
-            const data = await analyzeMedia({
-                video: videoFile,
-                audio: audioFile,
-                image: imageFile,
-                text,
-            })
+            const form = new FormData()
+            if (files.video) form.append('video', files.video)
+            if (files.audio) form.append('audio', files.audio)
+            if (files.image) form.append('image', files.image)
+            if (caption.trim()) form.append('text', caption.trim())
+
+            const data = await analyzeMedia(form)
             setResult(data)
-            setStep('done')
         } catch (e) {
-            setError(e.message)
-            setStep(null)
+            setError(e.message || 'Analysis failed')
         } finally {
             setLoading(false)
         }
     }
 
     return (
-        <div style={{ color: '#e2e8f0', fontFamily: "'Inter', 'Segoe UI', monospace" }}>
-
-            {/* ── Description ─────────────────────────────────────────────── */}
-            <p style={{ color: '#64748b', fontSize: 13, margin: '0 0 20px' }}>
-                Upload media files for heuristic multi-modal forensic analysis.{' '}
-                All files are processed in-memory — nothing is stored.{' '}
-                Provide any combination (video + audio + image + text) or just one.
-            </p>
-
-            {/* ── File Inputs ──────────────────────────────────────────────── */}
-            <div style={{ marginBottom: 20 }}>
-                <Label>🗂 Upload Files (all optional)</Label>
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                    <FileCard
-                        label="Video File"
-                        icon="🎬"
-                        accept="video/*"
-                        file={videoFile}
-                        onChange={setVideoFile}
-                        color="#ef4444"
-                    />
-                    <FileCard
-                        label="Audio File"
-                        icon="🎙️"
-                        accept="audio/*"
-                        file={audioFile}
-                        onChange={setAudioFile}
-                        color="#6366f1"
-                    />
-                    <FileCard
-                        label="Image File"
-                        icon="🖼️"
-                        accept="image/*"
-                        file={imageFile}
-                        onChange={setImageFile}
-                        color="#22c55e"
-                    />
-                </div>
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* Header */}
+            <div>
+                <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    File Forensics — Upload &amp; Analyze
+                </h2>
+                <p style={{ margin: '0.35rem 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                    Upload video, audio, or image files for deepfake and AI artifact detection.
+                    Mix and match — all slots are optional.
+                </p>
             </div>
 
-            {/* ── Text Field ──────────────────────────────────────────────── */}
-            <div style={{ marginBottom: 20 }}>
-                <Label>📝 Text / Transcript (optional — enhances text scores)</Label>
-                <textarea
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    rows={5}
-                    placeholder="Paste related text, transcript, caption, or description for manipulation & emotion analysis…"
-                    style={{
-                        width: '100%',
-                        padding: 12,
-                        background: '#0e0e1a',
-                        border: '1px solid #1e1e2e',
-                        borderRadius: 8,
-                        color: '#e2e8f0',
-                        fontFamily: 'inherit',
-                        fontSize: 13,
-                        resize: 'vertical',
-                        boxSizing: 'border-box',
-                        outline: 'none',
-                    }}
+            {/* Drop zones */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
+                {SLOTS.map(slot => (
+                    <DropZone key={slot.key} slot={slot} file={files[slot.key]} onFile={handleFile} />
+                ))}
+            </div>
+
+            {/* Caption */}
+            <div className="form-group">
+                <label className="form-label" htmlFor="file-caption">
+                    Caption / Context <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span>
+                </label>
+                <input
+                    id="file-caption"
+                    className="form-input"
+                    type="text"
+                    placeholder="Briefly describe the media content…"
+                    value={caption}
+                    onChange={e => setCaption(e.target.value)}
+                    maxLength={300}
                 />
             </div>
 
-            {/* ── Action Row ───────────────────────────────────────────────── */}
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20 }}>
-                <button
-                    onClick={handleAnalyze}
-                    disabled={loading || !hasInput}
-                    style={{
-                        padding: '11px 28px',
-                        fontSize: 14,
-                        fontWeight: 'bold',
-                        cursor: loading || !hasInput ? 'not-allowed' : 'pointer',
-                        background: loading || !hasInput
-                            ? '#1e1e2e'
-                            : 'linear-gradient(135deg, #4f46e5, #7c3aed)',
-                        color: loading || !hasInput ? '#444' : '#fff',
-                        border: 'none',
-                        borderRadius: 8,
-                        transition: 'all 0.2s',
-                        boxShadow: loading || !hasInput ? 'none' : '0 4px 14px #6366f133',
-                    }}
-                >
-                    {loading ? '⏳ Analyzing…' : '🔬 Run Forensic Analysis'}
-                </button>
-
-                {(result || error || videoFile || audioFile || imageFile || text) && (
-                    <button
-                        onClick={handleReset}
-                        disabled={loading}
-                        style={{
-                            padding: '11px 18px',
-                            fontSize: 13,
-                            cursor: 'pointer',
-                            background: '#1e1e2e',
-                            color: '#94a3b8',
-                            border: '1px solid #2a2a3a',
-                            borderRadius: 8,
-                        }}
-                    >
-                        🔄 Reset
-                    </button>
-                )}
-            </div>
-
-            {/* ── Progress ─────────────────────────────────────────────────── */}
-            {loading && (
-                <div style={{
-                    background: '#0e0e1a',
-                    border: '1px solid #1e1e2e',
-                    borderRadius: 8,
-                    padding: '12px 16px',
-                    marginBottom: 16,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 6,
-                }}>
-                    <ProgressStep label="Reading file buffers" done={step === 'analyzing' || step === 'done'} active={step === 'reading'} />
-                    <ProgressStep label="Running forensic analysis" done={step === 'done'} active={step === 'analyzing'} />
-                    <ProgressStep label="Generating PPS breakdown" done={step === 'done'} active={false} />
-                </div>
-            )}
-
-            {/* ── Error ────────────────────────────────────────────────────── */}
+            {/* Error */}
             {error && (
-                <div style={{
-                    background: '#2a0a0a',
-                    border: '1px solid #ef444466',
-                    borderRadius: 8,
-                    padding: '12px 16px',
-                    color: '#fca5a5',
-                    fontSize: 13,
-                    marginBottom: 16,
-                }}>
-                    ❌ <strong>Error:</strong> {error}
+                <div className="error-alert" role="alert" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>⚠</span> {error}
                 </div>
             )}
 
-            {/* ── Result ───────────────────────────────────────────────────── */}
-            <ForensicDashboard result={result} />
+            {/* Submit */}
+            <button
+                className={`btn-primary${loading ? ' loading' : ''}`}
+                onClick={handleSubmit}
+                disabled={loading || !hasFile}
+            >
+                {loading ? (
+                    <>
+                        <span className="spinner" aria-hidden="true" />
+                        Processing Media…
+                    </>
+                ) : (
+                    '🔬 Run Forensic Analysis'
+                )}
+            </button>
 
-            {/* ── Footer disclaimer ─────────────────────────────────────────── */}
-            <div style={{
-                marginTop: 24,
-                padding: '10px 16px',
-                border: '1px solid #1e1e2e',
-                borderRadius: 8,
-                fontSize: 11,
-                color: '#475569',
-                lineHeight: 1.7,
-            }}>
-                <strong style={{ color: '#64748b' }}>ℹ️ Technical Notes:</strong>{' '}
-                Video analysis samples 1 frame per second using OpenCV Haar cascades (no model download).{' '}
-                Audio analysis uses librosa FFT/pyin for spectral heuristics.{' '}
-                Image analysis uses Pillow EXIF + numpy pixel statistics.{' '}
-                No PyTorch, TensorFlow, or external API calls are made.{' '}
-                All processing is local and temporary.
-            </div>
-        </div>
-    )
-}
-
-// ─── Micro ─────────────────────────────────────────────────────────────────
-function Label({ children }) {
-    return (
-        <div style={{
-            color: '#94a3b8',
-            fontSize: 12,
-            fontWeight: 'bold',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-            marginBottom: 10,
-        }}>
-            {children}
+            {/* Result — includes forensic sub-scores */}
+            {result && <ResultDisplay result={result} showForensic />}
         </div>
     )
 }

@@ -1,21 +1,20 @@
 /**
- * DPIS — API Service Layer
+ * DPIS — API Service Layer (v3.2)
  *
- * All paths are RELATIVE — no localhost, no hardcoded domains.
- * Development: Vite proxy forwards /api/* to uvicorn api.index:app (port 8000).
- * Production:  Vercel serverless function handles /api/* directly.
- *
- * Safe JSON parsing on every call — never throws on non-JSON responses.
+ * - Uses relative paths only (/api)
+ * - Works with Vite proxy in dev (no path rewrite, /api prefix forwarded as-is)
+ * - Works with Vercel serverless in prod (api/index.py mounts at /api)
+ * - Safe JSON parsing — never throws "Unexpected token T"
  */
 
 const BASE = '/api'
 
-/**
- * Safe fetch wrapper — always returns parsed JSON or throws an Error
- * with a human-readable message, even if server returns HTML or plain text.
- */
+// ──────────────────────────────────────────────────────────────────────────────
+// Safe fetch wrapper
+// ──────────────────────────────────────────────────────────────────────────────
 async function safeFetch(url, options = {}) {
     let response
+
     try {
         response = await fetch(url, options)
     } catch (networkErr) {
@@ -23,19 +22,17 @@ async function safeFetch(url, options = {}) {
     }
 
     const contentType = response.headers.get('content-type') ?? ''
-    let body
 
-    if (contentType.includes('application/json')) {
-        body = await response.json()
-    } else {
-        // Server returned non-JSON (HTML error page, plain text, etc.)
+    if (!contentType.includes('application/json')) {
         const text = await response.text()
-        if (!response.ok) {
-            throw new Error(`Server error ${response.status}: ${text.slice(0, 200)}`)
-        }
-        // Unexpected non-JSON success — surface as error
-        throw new Error(`Unexpected response format (expected JSON, got ${contentType})`)
+        throw new Error(
+            response.ok
+                ? `Unexpected response format (expected JSON, got ${contentType})`
+                : `Server ${response.status}: ${text.slice(0, 300)}`
+        )
     }
+
+    const body = await response.json()
 
     if (!response.ok) {
         throw new Error(body?.detail ?? body?.message ?? `HTTP ${response.status}`)
@@ -44,12 +41,10 @@ async function safeFetch(url, options = {}) {
     return body
 }
 
-/**
- * Analyze text / transcript.
- * @param {string} text          - Content to analyze
- * @param {string} inputType     - "text" | "audio" | "video"
- * @param {number} deepfakeScore - Simulated 0–1 deepfake confidence (demo)
- */
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Text / transcript analysis   →  POST /api/analyze
+// ──────────────────────────────────────────────────────────────────────────────
 export async function analyzeText(text, inputType = 'text', deepfakeScore = 0.72) {
     return safeFetch(`${BASE}/analyze`, {
         method: 'POST',
@@ -62,24 +57,27 @@ export async function analyzeText(text, inputType = 'text', deepfakeScore = 0.72
     })
 }
 
-/**
- * Multi-modal forensic file analysis.
- * @param {object} options
- * @param {File|null} options.video
- * @param {File|null} options.audio
- * @param {File|null} options.image
- * @param {string}    options.text   - Optional accompanying transcript
- */
-export async function analyzeMedia({ video = null, audio = null, image = null, text = '' } = {}) {
-    const form = new FormData()
-    if (video) form.append('video', video)
-    if (audio) form.append('audio', audio)
-    if (image) form.append('image', image)
-    form.append('text', text)
-    // Do NOT set Content-Type — browser must set multipart boundary automatically
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Multi-modal media analysis   →  POST /api/analyze/media
+//
+// Accepts a pre-built FormData object so callers retain full control
+// over which file slots (video / audio / image) and text are included.
+//
+// Usage:
+//   const form = new FormData()
+//   form.append('video', videoFile)       // optional File object
+//   form.append('media_url', 'https://…') // or a public URL
+//   form.append('text', 'caption…')       // optional caption
+//   const result = await analyzeMedia(form)
+// ──────────────────────────────────────────────────────────────────────────────
+export async function analyzeMedia(formData) {
+    if (!(formData instanceof FormData)) {
+        throw new TypeError('analyzeMedia expects a FormData instance')
+    }
     return safeFetch(`${BASE}/analyze/media`, {
         method: 'POST',
-        body: form,
+        body: formData,
+        // Do NOT set Content-Type header — browser must set multipart boundary automatically
     })
 }

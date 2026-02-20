@@ -1,69 +1,78 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
 
 class AnalyzeRequest(BaseModel):
-    text: str = Field(..., description="Text content to analyze (transcript, post, caption)")
-    input_type: str = Field(default="text", description="Input type: text | video | audio")
-    # Optional simulated deepfake override (0.0–1.0) for demo purposes
-    simulated_deepfake_score: Optional[float] = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Optional override for deepfake model confidence (demo mode)"
-    )
+    text: str
+    input_type: str = "text"
+    simulated_deepfake_score: Optional[float] = None
 
 
+# ─────────────────────────────────────────────
+# Deepfake
+# ─────────────────────────────────────────────
 class DeepfakeResult(BaseModel):
-    method: str                    # "Hybrid Authenticity Risk Estimation"
-    model_confidence: float        # 0–100
-    anomaly_score: float           # 0–100
-    final_deepfake_score: float    # 0–100 (0.6×MC + 0.4×AH)
+    method: str
+    model_confidence: float
+    anomaly_score: float
+    final_deepfake_score: float
     signals: List[str]
-    label: str                     # e.g. "[HYBRID] Authenticity Risk"
+    label: str
 
 
+# ─────────────────────────────────────────────
+# Emotion
+# ─────────────────────────────────────────────
 class EmotionResult(BaseModel):
     dominant_emotion: str
-    raw_scores: Dict[str, float]         # fear, anger, urgency, shock, etc.
-    weighted_contribution: Dict[str, float]
-    amplification_score: float           # 0–100
+    raw_counts: Dict[str, int]
+    density_scores: Dict[str, float]
+    stacking_bonus_applied: float
+    amplification_score: float
 
 
+# ─────────────────────────────────────────────
+# Propaganda
+# ─────────────────────────────────────────────
 class PropagandaResult(BaseModel):
-    manipulation_score: float            # 0–100
+    manipulation_score: float
     trigger_phrases: List[str]
-    triggered_patterns: List[Dict[str, Any]]   # [{pattern, category, weight}]
-    pattern_breakdown: Dict[str, int]    # urgency, authority, polarization, absolutist counts
+    pattern_breakdown: Dict[str, int]
 
 
+# ─────────────────────────────────────────────
+# Virality
+# ─────────────────────────────────────────────
 class ViralityResult(BaseModel):
-    virality_score: float               # 0–100
+    virality_score: float
     multiplier_applied: bool
     multiplier_reason: Optional[str]
-    spread_probability: str             # Low | Medium | High
+    spread_probability: str
     component_breakdown: Dict[str, float]
 
 
-class PPSBreakdown(BaseModel):
-    deepfake_contribution: float
-    emotion_contribution: float
-    manipulation_contribution: float
-    virality_contribution: float
-
-
+# ─────────────────────────────────────────────
+# PPS
+# ─────────────────────────────────────────────
 class PPSResult(BaseModel):
-    score: float                        # 0–100
-    threat_level: str                   # Low / Moderate / High / Severe
-    breakdown: PPSBreakdown
-    score_rationale: Dict[str, str]     # Module → rationale text
+    score: float
+    threat_level: str
+    breakdown: Dict[str, float]
+    interaction_effects: Dict[str, Any]
+    score_rationale: Dict[str, str]
 
 
+# ─────────────────────────────────────────────
+# SDI
+# ─────────────────────────────────────────────
 class SDIResult(BaseModel):
-    sdi_score: float                    # PPS × (VR / 100)
-    disruption_level: str               # Low | Moderate | Severe
+    sdi_score: float
+    disruption_level: str
 
 
+# ─────────────────────────────────────────────
+# Explainability
+# ─────────────────────────────────────────────
 class CounterfactualAnalysis(BaseModel):
     pps_without_urgency: float
     pps_without_fear: float
@@ -76,6 +85,9 @@ class ExplainabilityResult(BaseModel):
     counterfactual_analysis: CounterfactualAnalysis
 
 
+# ─────────────────────────────────────────────
+# Full Response
+# ─────────────────────────────────────────────
 class AnalysisResult(BaseModel):
     input_type: str
     deepfake: DeepfakeResult
@@ -84,4 +96,6 @@ class AnalysisResult(BaseModel):
     virality: ViralityResult
     pps: PPSResult
     sdi: SDIResult
+    pdi: Dict[str, float]
     explanation: ExplainabilityResult
+    performance: Dict[str, float]

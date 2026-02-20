@@ -1,92 +1,227 @@
-def build_explanation(
-    deepfake_result:    Dict[str, Any],
-    emotion_result:     Dict[str, Any],
-    propaganda_result:  Dict[str, Any],
-    virality_result:    Dict[str, Any],
-    pps_result:         Dict[str, Any],
+"""
+DPIS — Lightweight Multi-Modal Media Forensics Engine
+backend/core/media_forensics.py
+"""
+
+from __future__ import annotations
+import io
+import logging
+from typing import Dict, Any, Optional
+import numpy as np
+logger = logging.getLogger(__name__)
+
+# Optional dependencies (graceful fallback)
+
+try:
+    import cv2
+    import numpy as np
+    _CV2_OK = True
+except ImportError:
+    _CV2_OK = False
+
+try:
+    import librosa
+    import soundfile as sf
+    import numpy as np  # noqa
+    _LIBROSA_OK = True
+except ImportError:
+    _LIBROSA_OK = False
+
+try:
+    from PIL import Image
+    import numpy as np  # noqa
+    _PIL_OK = True
+except ImportError:
+    _PIL_OK = False
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
+
+# ─────────────────────────────────────────────
+# VIDEO FORENSICS (Improved Sensitivity)
+# ─────────────────────────────────────────────
+
+def analyze_video_frames(file_bytes: bytes) -> Dict[str, Any]:
+    if not _CV2_OK or np is None:
+        return {
+            "deepfake_probability": 0.0,
+            "signals": ["[VIDEO FORENSICS UNAVAILABLE] OpenCV not installed"],
+        }
+
+    try:
+        import tempfile, os
+
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+            tmp.write(file_bytes)
+            tmp_path = tmp.name
+
+        cap = cv2.VideoCapture(tmp_path)
+        os.unlink(tmp_path)
+
+        if not cap.isOpened():
+            return {
+                "deepfake_probability": 0.0,
+                "signals": ["Could not open video file"],
+            }
+
+        frame_count = 0
+        lap_vars = []
+
+        while frame_count < 40:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            lap_vars.append(cv2.Laplacian(gray, cv2.CV_64F).var())
+            frame_count += 1
+
+        cap.release()
+
+        if not lap_vars:
+            return {
+                "deepfake_probability": 0.0,
+                "signals": ["No frames sampled"],
+            }
+
+        variance = float(np.std(lap_vars))
+
+        # Stronger nonlinear scaling
+        score = min((variance / 600.0) ** 0.7, 1.0)
+
+        return {
+            "deepfake_probability": round(score, 4),
+            "signals": [f"Frame sharpness instability: {variance:.2f}"],
+            "frame_stats": {"frames_sampled": frame_count},
+        }
+
+    except Exception as e:
+        logger.exception("Video processing failed")
+        return {
+            "deepfake_probability": 0.0,
+            "signals": [f"Processing error: {str(e)}"],
+        }
+
+
+# ─────────────────────────────────────────────
+# AUDIO FORENSICS (Improved Sensitivity)
+# ─────────────────────────────────────────────
+
+def analyze_audio_waveform(file_bytes: bytes) -> Dict[str, Any]:
+    if not _LIBROSA_OK or np is None:
+        return {
+            "spoof_probability": 0.0,
+            "signals": ["[AUDIO FORENSICS UNAVAILABLE] librosa not installed"],
+        }
+
+    try:
+        buf = io.BytesIO(file_bytes)
+        y, sr = librosa.load(buf, sr=None, mono=True)
+
+        flatness = librosa.feature.spectral_flatness(y=y)
+        mean_flat = float(np.mean(flatness))
+
+        # Better scaling curve
+        score = min((mean_flat * 8) ** 0.8, 1.0)
+
+        return {
+            "spoof_probability": round(score, 4),
+            "signals": [f"Spectral flatness anomaly: {mean_flat:.5f}"],
+            "audio_stats": {"sample_rate": sr},
+        }
+
+    except Exception as e:
+        logger.exception("Audio processing failed")
+        return {
+            "spoof_probability": 0.0,
+            "signals": [f"Processing error: {str(e)}"],
+        }
+
+
+# ─────────────────────────────────────────────
+# IMAGE FORENSICS (Improved Sensitivity)
+# ─────────────────────────────────────────────
+
+def analyze_image_artifacts(file_bytes: bytes) -> Dict[str, Any]:
+    if not _PIL_OK or np is None:
+        return {
+            "ai_image_probability": 0.0,
+            "signals": ["[IMAGE FORENSICS UNAVAILABLE] Pillow not installed"],
+        }
+
+    try:
+        img = Image.open(io.BytesIO(file_bytes))
+        gray = np.array(img.convert("L"))
+
+        variance = float(np.var(gray))
+
+        # Nonlinear scaling makes AI textures trigger higher
+        score = min((variance / 3500.0) ** 0.75, 1.0)
+
+        return {
+            "ai_image_probability": round(score, 4),
+            "signals": [f"Pixel variance anomaly: {variance:.2f}"],
+            "image_stats": {
+                "dimensions": f"{img.width}x{img.height}"
+            },
+        }
+
+    except Exception as e:
+        logger.exception("Image processing failed")
+        return {
+            "ai_image_probability": 0.0,
+            "signals": [f"Processing error: {str(e)}"],
+        }
+
+
+# ─────────────────────────────────────────────
+# PPS CALCULATION (Stronger Model)
+# ─────────────────────────────────────────────
+
+def compute_forensic_pps(
+    deepfake_score: float,
+    video_deepfake_prob: float,
+    audio_spoof_prob: float,
+    image_ai_prob: float,
+    emotion_score: float,
+    manipulation_score: float,
+    virality_score: float,
 ) -> Dict[str, Any]:
 
-    top_signals: List[str] = []
-
-    # ── Deepfake ─────────────────────────────────────────
-    df_score = deepfake_result.get("final_deepfake_score", 0.0)
-    model_conf = deepfake_result.get("model_confidence", 0.0)
-    anomaly = deepfake_result.get("anomaly_score", 0.0)
-
-    top_signals.append(
-        f"Deepfake score {df_score:.1f}/100 "
-        f"(model_confidence={model_conf:.1f}, anomaly={anomaly:.1f})"
+    # Stronger media emphasis
+    media_score = max(
+        deepfake_score,
+        video_deepfake_prob * 100,
+        image_ai_prob * 100,
     )
 
-    for sig in deepfake_result.get("signals", [])[:2]:
-        top_signals.append(f"  ↳ {sig}")
+    blended = 0.80 * media_score + 0.20 * (audio_spoof_prob * 100)
 
-    # ── Emotion ─────────────────────────────────────────
-    dominant = emotion_result.get("dominant_emotion", "neutral")
-    raw_scores = emotion_result.get("raw_scores", {})
-    dom_score = raw_scores.get(dominant, 0.0)
+    # Adjusted weights (more emotion impact)
+    df = 0.35 * blended
+    em = 0.35 * emotion_score
+    mp = 0.20 * manipulation_score
+    vr = 0.10 * virality_score
 
-    top_signals.append(
-        f"Dominant emotion: {dominant.upper()} ({dom_score:.2f}) "
-        f"— EA score {emotion_result.get('amplification_score', 0.0):.1f}/100"
-    )
+    pps = min(df + em + mp + vr, 100.0)
 
-    # ── Propaganda ──────────────────────────────────────
-    mp_score = propaganda_result.get("manipulation_score", 0.0)
-    triggers = propaganda_result.get("trigger_phrases", [])
-    pattern_breakdown = propaganda_result.get("pattern_breakdown", {})
-
-    top_signals.append(
-        f"Propaganda score {mp_score:.1f}/100 — {len(triggers)} trigger phrase(s)"
-    )
-
-    for tp in triggers[:4]:
-        top_signals.append(f"  ↳ Trigger: '{tp}'")
-
-    # ── Virality ────────────────────────────────────────
-    vr_score = virality_result.get("virality_score", 0.0)
-    spread = virality_result.get("spread_probability", "Unknown")
-
-    top_signals.append(
-        f"Virality risk {vr_score:.1f}/100 — spread: {spread}"
-    )
-
-    if virality_result.get("multiplier_applied"):
-        top_signals.append(
-            f"  ↳ Multiplier applied: {virality_result.get('multiplier_reason')}"
-        )
-
-    # ── Summary ─────────────────────────────────────────
-    pps = pps_result.get("score", 0.0)
-    threat = pps_result.get("threat_level", "Unknown")
-
-    summary = (
-        f"This content scores {pps:.1f}/100 ({threat}). "
-        f"Primary drivers: {dominant} amplification, "
-        f"{len(triggers)} propaganda triggers, and "
-        f"{spread.lower()} virality risk."
-    )
-
-    # ── Counterfactual (safe) ───────────────────────────
-    df = df_score
-    ea = emotion_result.get("amplification_score", 0.0)
-    mp = mp_score
-    vr = vr_score
-
-    pps_no_urgency = round(pps * 0.85, 2)
-    pps_no_fear = round(pps * 0.95, 2)
-
-    impact_statement = (
-        f"Removing urgency language would reduce PPS to {pps_no_urgency:.1f}. "
-        f"Reducing fear intensity would reduce PPS to {pps_no_fear:.1f}."
+    virality_risk = min(
+        (emotion_score / 100)
+        * (virality_score / 100)
+        * (blended / 100),
+        1.0,
     )
 
     return {
-        "summary": summary,
-        "top_signals": top_signals,
-        "counterfactual_analysis": {
-            "pps_without_urgency": pps_no_urgency,
-            "pps_without_fear": pps_no_fear,
-            "impact_statement": impact_statement,
+        "pps": round(pps, 2),
+        "blended_deepfake_score": round(blended, 2),
+        "virality_risk": round(virality_risk, 4),
+        "contribution_breakdown": {
+            "deepfake_component": round(df, 2),
+            "emotional_component": round(em, 2),
+            "manipulation_component": round(mp, 2),
+            "virality_component": round(vr, 2),
         },
     }

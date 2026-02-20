@@ -1,63 +1,75 @@
-import { useState } from 'react'
-import UploadPanel from './UploadPanel.jsx'
-import MediaAnalyzer from './components/MediaAnalyzer.jsx'
-import FileForensicsPanel from './components/FileForensicsPanel.jsx'
-import ResultDisplay from './components/ResultDisplay.jsx'
-import { analyzeText } from './services/api.js'
+import { useState } from "react";
+import UploadPanel from "./UploadPanel.jsx";
+import MediaAnalyzer from "./components/MediaAnalyzer.jsx";
+import ResultDisplay from "./components/ResultDisplay.jsx";
+import { analyzeText } from "./services/api.js";
 
 const TABS = [
-    { key: 'text', label: '📝 Text Analysis', desc: 'Paste any text, transcript, or social media post' },
-    { key: 'media', label: '🎬 Media Analysis', desc: 'Upload or record audio / video for transcription analysis' },
-    { key: 'forensic', label: '🔬 Forensic Analysis', desc: 'Deep multi-modal file forensics — video, audio, image' },
-]
+    {
+        key: "text",
+        label: "📝 Text Analysis",
+        desc: "Paste any text, transcript, or social media post",
+    },
+    {
+        key: "media",
+        label: "🎬 Media Analysis",
+        desc: "Upload image or capture from camera for analysis",
+    },
+];
 
 function App() {
-    const [tab, setTab] = useState('text')
-    const [result, setResult] = useState(null)
-    const [loading, setLoading] = useState(false)
-    const [error, setError] = useState(null)
+    const [tab, setTab] = useState("text");
+    const [result, setResult] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
 
     const handleAnalyze = async ({ text, inputType }) => {
-        setLoading(true)
-        setError(null)
-        setResult(null)
+        setLoading(true);
+        setError(null);
+        setResult(null);
+
         try {
-            const data = await analyzeText(text, inputType, 0.72)
-            setResult(data)
+            const data = await analyzeText(text, inputType, 0.72);
+            setResult(data);
         } catch (err) {
-            setError(err.message)
+            setError(err.message || "Something went wrong");
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
-    }
+    };
 
-    const switchTab = (t) => { setTab(t); setResult(null); setError(null) }
+    const switchTab = (t) => {
+        setTab(t);
+        setResult(null);
+        setError(null);
+    };
 
-    const activeTab = TABS.find(t => t.key === tab)
+    const activeTab = TABS.find((t) => t.key === tab);
 
     return (
         <div className="app-shell">
-
-            {/* ── Header ── */}
+            {/* Header */}
             <header className="app-header">
                 <div className="header-brand">
                     <div className="header-logo">🛡️</div>
                     <div>
                         <div className="header-title">DPIS</div>
-                        <div className="header-subtitle">Deepfake Psychological Impact Shield · v3.0</div>
+                        <div className="header-subtitle">
+                            Deepfake Psychological Impact Shield · v3.0
+                        </div>
                     </div>
                 </div>
                 <div className="header-badge">DEMO</div>
             </header>
 
-            {/* ── Tab Nav ── */}
+            {/* Tabs */}
             <nav className="tab-nav" role="tablist">
-                {TABS.map(t => (
+                {TABS.map((t) => (
                     <button
                         key={t.key}
                         role="tab"
                         aria-selected={tab === t.key}
-                        className={`tab-btn${tab === t.key ? ' active' : ''}`}
+                        className={`tab-btn${tab === t.key ? " active" : ""}`}
                         onClick={() => switchTab(t.key)}
                     >
                         {t.label}
@@ -65,20 +77,22 @@ function App() {
                 ))}
             </nav>
 
-            {/* ── Tab Description ── */}
+            {/* Description */}
             <p className="tab-description">{activeTab?.desc}</p>
 
-            {/* ── Text Analysis ── */}
-            {tab === 'text' && (
+            {/* Text Analysis */}
+            {tab === "text" && (
                 <>
                     <UploadPanel onAnalyze={handleAnalyze} loading={loading} />
 
-                    {loading && <div className="loading-bar" style={{ margin: '16px 0' }} />}
+                    {loading && <div className="loading-bar" style={{ margin: "16px 0" }} />}
 
                     {error && (
                         <div className="alert alert-error">
                             <span className="alert-icon">⚠️</span>
-                            <span><strong>Error:</strong> {error}</span>
+                            <span>
+                                <strong>Error:</strong> {error}
+                            </span>
                         </div>
                     )}
 
@@ -86,13 +100,10 @@ function App() {
                 </>
             )}
 
-            {/* ── Media Analysis ── */}
-            {tab === 'media' && <MediaAnalyzer />}
-
-            {/* ── Forensic Analysis ── */}
-            {tab === 'forensic' && <FileForensicsPanel />}
+            {/* Media Analysis */}
+            {tab === "media" && <MediaAnalyzer />}
         </div>
-    )
+    );
 }
 
-export default App
+export default App;
