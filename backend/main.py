@@ -108,8 +108,8 @@ async def analyze_media(
         emotional_amplification=emotion["amplification_score"],
         manipulation_score=propaganda["manipulation_score"],
         polarization_intensity=polarization_intensity,
-        fear_score=emotion["raw_scores"].get("fear", 0.0),
-        anger_score=emotion["raw_scores"].get("anger", 0.0),
+        fear_score=emotion["density_scores"].get("fear", 0.0),
+        anger_score=emotion["density_scores"].get("anger", 0.0),
     )
 
     mp_score = propaganda["manipulation_score"]
