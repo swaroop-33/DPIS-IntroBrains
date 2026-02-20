@@ -52,3 +52,7 @@ async def _unhandled(request, exc):
 
 # Mount the real backend under /api
 app.mount("/api", _backend_app)
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("api.index:app", host="0.0.0.0", port=port)
