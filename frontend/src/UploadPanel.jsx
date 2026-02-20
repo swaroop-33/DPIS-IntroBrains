@@ -1,99 +1,97 @@
 import { useState } from 'react'
 
-/**
- * UploadPanel — Phase 1
- *
- * Props:
- *   onAnalyze({ text, inputType }) → called when user submits
- *   loading → boolean, disables button while fetch is in-flight
- *
- * Features:
- *   • Textarea for pasting text / transcript
- *   • Dropdown to select input_type (text | audio | video)
- *   • Submit button with basic validation (no empty text)
- */
+const INPUT_TYPES = [
+    { value: 'text', label: 'Text / Post' },
+    { value: 'audio', label: 'Audio Transcript' },
+    { value: 'video', label: 'Video Transcript' },
+]
+
+const EXAMPLES = [
+    { label: 'Neutral', text: 'Scientists discovered a new species of deep-sea fish in the Pacific Ocean this week.' },
+    { label: 'Moderate', text: 'BREAKING: You need to see this before it gets deleted. Share before they silence the truth!' },
+    { label: 'High Risk', text: 'URGENT ACT NOW!! They dont want you to know the TRUTH. The mainstream media is LYING. Wake up people! Share this immediately. 100% proven. Fear is everywhere. The elites are suppressing this. Undeniable proof!' },
+]
+
 function UploadPanel({ onAnalyze, loading }) {
     const [text, setText] = useState('')
     const [inputType, setInputType] = useState('text')
+    const [charCount, setCharCount] = useState(0)
+
+    const handleText = (val) => { setText(val); setCharCount(val.length) }
 
     const handleSubmit = (e) => {
         e.preventDefault()
         const trimmed = text.trim()
-        if (!trimmed) {
-            alert('Please enter some content to analyze.')
-            return
-        }
+        if (!trimmed || trimmed.length < 5) return
         onAnalyze({ text: trimmed, inputType })
     }
 
+    const loadExample = (t) => { handleText(t) }
+
     return (
         <form onSubmit={handleSubmit}>
-            <h2>Input</h2>
+            <div className="card">
+                <p className="section-label">Input Type</p>
+                <div className="pill-group" style={{ marginBottom: 20 }}>
+                    {INPUT_TYPES.map(o => (
+                        <button
+                            key={o.value}
+                            type="button"
+                            className={`pill-option${inputType === o.value ? ' selected' : ''}`}
+                            onClick={() => setInputType(o.value)}
+                        >
+                            {o.label}
+                        </button>
+                    ))}
+                </div>
 
-            {/* Input type selector */}
-            <div style={{ marginBottom: 12 }}>
-                <label htmlFor="input-type" style={{ marginRight: 8, fontWeight: 'bold' }}>
-                    Input Type:
-                </label>
-                <select
-                    id="input-type"
-                    value={inputType}
-                    onChange={(e) => setInputType(e.target.value)}
-                    style={{ padding: '4px 8px', fontSize: 14 }}
+                <p className="section-label">Content</p>
+                <div className="input-group">
+                    <textarea
+                        id="content-input"
+                        className="dpis-textarea"
+                        value={text}
+                        onChange={e => handleText(e.target.value)}
+                        rows={7}
+                        placeholder={
+                            inputType === 'text'
+                                ? 'Paste a social media post, news excerpt, or any text…'
+                                : `Paste the ${inputType} transcript here…`
+                        }
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 11, color: 'var(--t3)' }}>{charCount} characters</span>
+                        <span style={{ fontSize: 11, color: 'var(--t3)' }}>ℹ️ Deepfake score simulated at 0.72</span>
+                    </div>
+                </div>
+
+                {/* Example loader */}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 20 }}>
+                    <span style={{ fontSize: 11, color: 'var(--t3)', whiteSpace: 'nowrap' }}>Try example:</span>
+                    {EXAMPLES.map(ex => (
+                        <button
+                            key={ex.label}
+                            type="button"
+                            onClick={() => loadExample(ex.text)}
+                            style={{
+                                fontSize: 11, padding: '4px 10px', cursor: 'pointer',
+                                background: 'var(--surface)', border: '1px solid var(--border)',
+                                borderRadius: 6, color: 'var(--t2)', fontFamily: 'var(--font)',
+                            }}
+                        >
+                            {ex.label}
+                        </button>
+                    ))}
+                </div>
+
+                <button
+                    type="submit"
+                    disabled={loading || text.trim().length < 5}
+                    className="btn-primary"
                 >
-                    <option value="text">Text / Transcript</option>
-                    <option value="audio">Audio (text proxy)</option>
-                    <option value="video">Video (text proxy)</option>
-                </select>
+                    {loading ? <><span className="loading-spinner" /> Analyzing…</> : '🔍 Run Analysis'}
+                </button>
             </div>
-
-            {/* Text / transcript input */}
-            <div style={{ marginBottom: 12 }}>
-                <label htmlFor="content-input" style={{ fontWeight: 'bold', display: 'block', marginBottom: 4 }}>
-                    Content to Analyze:
-                </label>
-                <textarea
-                    id="content-input"
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    rows={8}
-                    placeholder={
-                        inputType === 'text'
-                            ? 'Paste a social media post, news excerpt, or any text…'
-                            : `Paste the ${inputType} transcript here…`
-                    }
-                    style={{
-                        width: '100%',
-                        padding: 10,
-                        fontFamily: 'monospace',
-                        fontSize: 13,
-                        boxSizing: 'border-box',
-                        resize: 'vertical',
-                    }}
-                />
-            </div>
-
-            {/* Demo note */}
-            <p style={{ color: '#888', fontSize: 12, margin: '0 0 12px' }}>
-                ℹ️ Demo mode: deepfake model confidence fixed at 0.72 (simulated).
-            </p>
-
-            {/* Submit */}
-            <button
-                type="submit"
-                disabled={loading}
-                style={{
-                    padding: '10px 24px',
-                    fontSize: 15,
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    background: loading ? '#aaa' : '#1a1a2e',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 4,
-                }}
-            >
-                {loading ? '⏳ Analyzing…' : '🔍 Analyze'}
-            </button>
         </form>
     )
 }
