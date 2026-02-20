@@ -5,3 +5,4 @@ numpy
 pillow
 librosa
 soundfile
+python-multipart
