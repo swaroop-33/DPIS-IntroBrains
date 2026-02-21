@@ -5,10 +5,10 @@ Run from project ROOT:
     python -m uvicorn api.index:app --reload
 
 Routes (mounted under /api by api/index.py):
-    GET  /          → service info
-    GET  /health    → health check
-    POST /analyze         → text / transcript analysis
-    POST /analyze/media   → multi-modal file upload + remote URL
+    GET  /           -> service info
+    GET  /health     -> health check
+    POST /analyze         -> text / transcript analysis
+    POST /analyze/media   -> multi-modal file upload + remote URL (unified ingestion)
 """
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
@@ -22,21 +22,26 @@ from .pipeline import run_pipeline
 app = FastAPI(
     title="DPIS — Deepfake Psychological Impact Shield",
     version="3.3.0",
-    description="Multi-modal AI forensic + adversarial intelligence: deepfake, emotion, propaganda, virality, PPS, CEI.",
+    description=(
+        "Multi-modal forensic + adversarial psychological intelligence engine. "
+        "Supports text, image, audio, video, and remote URL ingestion."
+    ),
 )
 
+# Per-type upload size caps (MB)
 MAX_FILE_MB = {"video": 50, "audio": 20, "image": 10}
 
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
 # Root + Health
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+
 @app.get("/")
 def root():
     return {
         "service": "DPIS — Deepfake Psychological Impact Shield",
         "version": "3.3.0",
-        "status": "running",
+        "status":  "running",
         "endpoints": {
             "text_analysis":  "POST /analyze",
             "media_analysis": "POST /analyze/media",
@@ -50,9 +55,10 @@ def health():
     return {"status": "ok", "version": "3.3.0"}
 
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
 # Text Analysis
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest):
     if not req.text or len(req.text.strip()) < 5:
@@ -71,9 +77,10 @@ def analyze(req: AnalyzeRequest):
         raise HTTPException(status_code=500, detail="Internal processing error")
 
 
-# ─────────────────────────────────────────────
-# Multi-Modal Media Analysis
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Unified Multi-Modal Media Analysis
+# ─────────────────────────────────────────────────────────────────────────────
+
 @app.post("/analyze/media")
 async def analyze_media(
     video:     Optional[UploadFile] = File(default=None),
@@ -87,140 +94,114 @@ async def analyze_media(
         analyze_audio_waveform,
         analyze_image_artifacts,
     )
-    from .core.url_extractor import extract_url, infer_media_type
+    from .core.url_extractor import extract_media_from_url, infer_media_type
 
     start = time.time()
 
     video_bytes: Optional[bytes] = None
     audio_bytes: Optional[bytes] = None
     image_bytes: Optional[bytes] = None
-    url_source: Optional[str]   = None
 
-    # ── 1. Read uploaded files ──────────────────────────────────────────────
     def _mb(b: bytes) -> float:
         return len(b) / 1_048_576
 
-    try:
-        if video:
-            data = await video.read()
-            if _mb(data) > MAX_FILE_MB["video"]:
-                raise HTTPException(status_code=400, detail=f"Video exceeds {MAX_FILE_MB['video']} MB limit")
-            video_bytes = data
+    def _check_size(b: bytes, slot: str) -> None:
+        cap = MAX_FILE_MB.get(slot, 25)
+        if _mb(b) > cap:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{slot.capitalize()} file exceeds {cap} MB size limit",
+            )
 
-        if audio:
-            data = await audio.read()
-            if _mb(data) > MAX_FILE_MB["audio"]:
-                raise HTTPException(status_code=400, detail=f"Audio exceeds {MAX_FILE_MB['audio']} MB limit")
-            audio_bytes = data
+    # ── 1. Read uploaded files ────────────────────────────────────────────────
+    if video and video.filename:
+        video_bytes = await video.read()
+        _check_size(video_bytes, "video")
 
-        if image:
-            data = await image.read()
-            if _mb(data) > MAX_FILE_MB["image"]:
-                raise HTTPException(status_code=400, detail=f"Image exceeds {MAX_FILE_MB['image']} MB limit")
-            image_bytes = data
+    if audio and audio.filename:
+        audio_bytes = await audio.read()
+        _check_size(audio_bytes, "audio")
 
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=400, detail="Failed to read uploaded files")
+    if image and image.filename:
+        image_bytes = await image.read()
+        _check_size(image_bytes, "image")
 
-    # ── 2. URL ingestion (YouTube, Drive, CDN, …) ────────────────────────────
-    if media_url and media_url.strip():
+    # ── 2. URL extraction (delegates entirely to url_extractor) ───────────────
+    # Platform detection is internal to url_extractor — not exposed here.
+    if media_url and media_url.strip() and not any([video_bytes, audio_bytes, image_bytes]):
         try:
-            content, content_type, src_type = extract_url(media_url.strip())
-            media_type = infer_media_type(content_type)
-            url_source = f"{src_type}:{media_type}"
-
-            if media_type == "video" and not video_bytes:
-                video_bytes = content
-            elif media_type == "audio" and not audio_bytes:
-                audio_bytes = content
-            elif media_type == "image" and not image_bytes:
-                image_bytes = content
-
+            v_bytes, a_bytes, i_bytes = extract_media_from_url(media_url.strip())
+            video_bytes = video_bytes or v_bytes
+            audio_bytes = audio_bytes or a_bytes
+            image_bytes = image_bytes or i_bytes
         except HTTPException:
             raise
-        except Exception:
+        except Exception as exc:
             traceback.print_exc()
-            raise HTTPException(status_code=400, detail="URL extraction failed")
+            raise HTTPException(status_code=400, detail=f"URL extraction failed: {exc}")
 
+    # ── Guard: at least one media slot must be populated ─────────────────────
     if not any([video_bytes, audio_bytes, image_bytes]):
         raise HTTPException(
             status_code=400,
-            detail="No media provided. Upload a file or supply a public media URL.",
+            detail="No media provided. Supply a file upload or a public media URL.",
         )
 
-    # ── 3. Forensic analysis ─────────────────────────────────────────────────
-    try:
-        video_result = (
-            analyze_video_frames(video_bytes)
-            if video_bytes
-            else {"deepfake_probability": 0.0, "signals": ["No video provided"]}
-        )
+    # ── 3. Forensic analysis per slot ─────────────────────────────────────────
+    video_result = (
+        analyze_video_frames(video_bytes)
+        if video_bytes
+        else {"deepfake_probability": 0.0, "signals": ["No video provided"]}
+    )
+    audio_result = (
+        analyze_audio_waveform(audio_bytes)
+        if audio_bytes
+        else {"spoof_probability": 0.0, "signals": ["No audio provided"]}
+    )
+    image_result = (
+        analyze_image_artifacts(image_bytes)
+        if image_bytes
+        else {"ai_image_probability": 0.0, "signals": ["No image provided"]}
+    )
 
-        audio_result = (
-            analyze_audio_waveform(audio_bytes)
-            if audio_bytes
-            else {"spoof_probability": 0.0, "signals": ["No audio provided"]}
-        )
+    # ── 4. Intelligence pipeline ──────────────────────────────────────────────
+    caption      = (text or "").strip() or "neutral media content"
+    _img_ai_prob = round(image_result.get("ai_image_probability", 0.0) * 100, 2)
 
-        image_result = (
-            analyze_image_artifacts(image_bytes)
-            if image_bytes
-            else {"ai_image_probability": 0.0, "signals": ["No image provided"]}
-        )
+    pipeline_result = run_pipeline(
+        text=caption,
+        input_type="media",
+        simulated_deepfake_score=None,
+        media_url=media_url,
+        has_media=True,
+        image_ai_probability=_img_ai_prob,
+    )
 
-        caption = text.strip() if text and text.strip() else "neutral media content"
+    elapsed_ms = round((time.time() - start) * 1000, 2)
 
-        # Real image AI probability for credibility erosion computation
-        _img_ai_prob = round(image_result.get("ai_image_probability", 0.0) * 100, 2)
+    # ── 5. Override stub forensic layer with real analysis data ───────────────
+    pipeline_result["forensic"] = {
+        "video_deepfake_probability": round(
+            video_result.get("deepfake_probability", 0.0) * 100, 2
+        ),
+        "audio_spoof_probability": round(
+            audio_result.get("spoof_probability", 0.0) * 100, 2
+        ),
+        "image_ai_probability": _img_ai_prob,
+        "authenticity_degradation_index": pipeline_result["forensic"].get(
+            "authenticity_degradation_index", 0.0
+        ),
+        "degradation_trajectory": pipeline_result["forensic"].get(
+            "degradation_trajectory", []
+        ),
+        "signals": {
+            "video": video_result.get("signals", []),
+            "audio": audio_result.get("signals", []),
+            "image": image_result.get("signals", []),
+        },
+    }
 
-        pipeline_result = run_pipeline(
-            text=caption,
-            input_type="media",
-            simulated_deepfake_score=None,
-            media_url=media_url,
-            has_media=True,
-            image_ai_probability=_img_ai_prob,
-        )
+    # Update performance metadata with real elapsed time
+    pipeline_result["performance"]["execution_time_ms"] = elapsed_ms
 
-        elapsed_ms = round((time.time() - start) * 1000, 2)
-
-        # Override stub forensic layer from pipeline with real media analysis data
-        forensic_override = {
-            "video_deepfake_probability": round(
-                video_result.get("deepfake_probability", 0.0) * 100, 2
-            ),
-            "audio_spoof_probability": round(
-                audio_result.get("spoof_probability", 0.0) * 100, 2
-            ),
-            "image_ai_probability": round(
-                image_result.get("ai_image_probability", 0.0) * 100, 2
-            ),
-            "signals": {
-                "video": video_result.get("signals", []),
-                "audio": audio_result.get("signals", []),
-                "image": image_result.get("signals", []),
-            },
-            "media_stats": {
-                "video": video_result.get("frame_stats"),
-                "audio": audio_result.get("audio_stats"),
-                "image": image_result.get("image_stats"),
-            },
-            "url_source": url_source,
-        }
-
-        return {
-            **pipeline_result,
-            "forensic": forensic_override,
-            "performance": {
-                "execution_time_ms": elapsed_ms,
-                "input_type": "media",
-            },
-        }
-
-    except HTTPException:
-        raise
-    except Exception:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail="Internal media processing error")
+    return pipeline_result
