@@ -1,9 +1,5 @@
 """
 DPIS — Advanced Multi-Modal Media Forensics Engine (v3.4)
-
-• Stronger separation curves
-• Nonlinear anomaly escalation
-• Cross-signal amplification
 """
 
 from __future__ import annotations
@@ -45,7 +41,7 @@ except ImportError:
 
 def analyze_video_frames(file_bytes: bytes) -> Dict[str, Any]:
 
-    if not _CV2_OK or np is None:
+    if not _CV2_OK:
         return {
             "deepfake_probability": 0.0,
             "signals": ["OpenCV not installed"],
@@ -125,7 +121,7 @@ def analyze_video_frames(file_bytes: bytes) -> Dict[str, Any]:
 
 def analyze_audio_waveform(file_bytes: bytes) -> Dict[str, Any]:
 
-    if not _LIBROSA_OK or np is None:
+    if not _LIBROSA_OK:
         return {
             "spoof_probability": 0.0,
             "signals": ["librosa not installed"],
@@ -166,7 +162,7 @@ def analyze_audio_waveform(file_bytes: bytes) -> Dict[str, Any]:
 
 def analyze_image_artifacts(file_bytes: bytes) -> Dict[str, Any]:
 
-    if not _PIL_OK or np is None:
+    if not _PIL_OK:
         return {
             "ai_image_probability": 0.0,
             "signals": ["Pillow not installed"],
