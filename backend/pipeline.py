@@ -161,9 +161,11 @@ def run_pipeline(
 
         # Layer 3 — Forensic (stub for text; overridden by main.py for media)
         "forensic": {
-            "video_deepfake_probability": round(deepfake_score, 2),
-            "audio_spoof_probability":    0.0,
-            "image_ai_probability":       round(image_ai_probability, 2),
+            "video_deepfake_probability":   round(deepfake_score, 2),
+            "audio_spoof_probability":      0.0,
+            "image_ai_probability":         round(image_ai_probability, 2),
+            "authenticity_degradation_index": deepfake.get("authenticity_degradation_index", 0.0),
+            "degradation_trajectory":       deepfake.get("degradation_trajectory", []),
             "signals": {
                 "video": deepfake.get("signals", []),
                 "audio": ["No audio input"],
@@ -173,14 +175,16 @@ def run_pipeline(
 
         # Layer 4 — Emotional Amplification
         "emotion": {
-            "dominant_emotion":       emotion.get("dominant_emotion", "neutral"),
-            "amplification_score":    amplification_score,
+            "dominant_emotion":      emotion.get("dominant_emotion", "neutral"),
+            "amplification_score":   amplification_score,
+            "arousal_density_index": emotion.get("arousal_density_index", 0.0),
             "density_scores": {
                 "fear":    density_scores.get("fear",    0.0),
                 "anger":   density_scores.get("anger",   0.0),
-                "outrage": density_scores.get("outrage", density_scores.get("disgust", 0.0)),
+                "urgency":  density_scores.get("urgency", 0.0),
+                "outrage": density_scores.get("outrage", 0.0),
                 "sadness": density_scores.get("sadness", 0.0),
-                "joy":     density_scores.get("joy",     0.0),
+                "shock":   density_scores.get("shock",   0.0),
             },
             "stacking_bonus_applied": emotion.get("stacking_bonus_applied", 0.0),
         },
@@ -241,6 +245,6 @@ def run_pipeline(
         "performance": {
             "execution_time_ms": elapsed_ms,
             "input_type":        input_type,
-            "dpis_version":      "3.3",
+            "dpis_version":      "3.3.0",
         },
     }

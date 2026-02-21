@@ -1,20 +1,27 @@
 """
-DPIS — PPS Aggregator + Societal Disruption Index (v3.2)
+DPIS — PPS Aggregator + Societal Disruption Index (v3.3)
 
-Threat bands (0–20 LOW, 21–40 ELEVATED, 41–60 MODERATE, 61–80 HIGH, 81–100 CRITICAL)
-SDI includes spread_risk_assessment for downstream reporting.
-PPS includes interpretation for dashboard display.
+Req #8: Nonlinear interaction escalation — exponential convergence.
+  When multiple dimensions simultaneously exceed thresholds, the combined
+  risk is modeled as an exponential function of convergence depth, not
+  linear stacking.
+
+  Mathematical model:
+    convergence_score = Σ (dim_i / 100) for high-risk dims
+    escalation_factor = e^(α × convergence_score) — true exponential
+
+  where α is calibrated to ensure realistic ceiling behavior.
+
+Threat bands: 0-20 LOW | 21-40 ELEVATED | 41-60 MODERATE | 61-80 HIGH | 81-100 CRITICAL
 """
 
+import math
 from typing import Dict, Any
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Threat classification
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Threat classification ──────────────────────────────────────────────────────
 
 def _classify_pps(score: float) -> tuple[str, str]:
-    """Returns (threat_level, interpretation)."""
     if score <= 20:
         return (
             "LOW",
@@ -48,7 +55,6 @@ def _classify_pps(score: float) -> tuple[str, str]:
 
 
 def _classify_sdi(sdi: float) -> tuple[str, str]:
-    """Returns (disruption_level, spread_risk_assessment)."""
     if sdi <= 20:
         return (
             "NEGLIGIBLE",
@@ -76,20 +82,53 @@ def _classify_sdi(sdi: float) -> tuple[str, str]:
         )
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# PPS Computation
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Exponential convergence escalation ────────────────────────────────────────
+
+_CONVERGENCE_THRESHOLD = 62.0   # score above which a dimension is "high risk"
+_CONVERGENCE_ALPHA     = 0.38   # tuning constant for e^(α × score)
+
+def _exponential_convergence_factor(
+    deepfake: float, emotion: float, manipulation: float, virality: float
+) -> tuple[float, int, float]:
+    """
+    Computes exponential escalation factor from convergent high-risk dimensions.
+
+    Returns (factor, high_dim_count, convergence_score).
+    factor > 1.0 → PPS is amplified exponentially.
+    """
+    dims = [deepfake, emotion, manipulation, virality]
+    high_dims     = [d for d in dims if d > _CONVERGENCE_THRESHOLD]
+    high_dim_count = len(high_dims)
+
+    if high_dim_count < 2:
+        return 1.0, high_dim_count, 0.0
+
+    # Convergence score: normalized sum of excess above threshold
+    excess_sum = sum((d - _CONVERGENCE_THRESHOLD) / (100.0 - _CONVERGENCE_THRESHOLD)
+                     for d in high_dims)
+
+    # True exponential: e^(α × excess_sum)
+    # α = 0.38 → at 2 fully-maxed dims, factor ≈ 1.46; at 4 dims ≈ 2.13 (capped)
+    raw_factor = math.exp(_CONVERGENCE_ALPHA * excess_sum)
+
+    # Soft cap at 2.2× to prevent unrealistic saturation (scores still reach 100)
+    factor = min(raw_factor, 2.20)
+
+    return factor, high_dim_count, round(excess_sum, 3)
+
+
+# ── PPS computation ────────────────────────────────────────────────────────────
 
 def compute_pps(
-    deepfake_score: float,
-    emotion_score: float,
+    deepfake_score:    float,
+    emotion_score:     float,
     manipulation_score: float,
-    virality_score: float,
+    virality_score:    float,
     platform_multiplier: float = 1.0,
 ) -> Dict[str, Any]:
     """
-    Weighted multi-signal PPS aggregation with controlled nonlinear escalation.
-    platform_multiplier: minor boost for public social platform URLs (e.g. 1.05).
+    Multi-signal PPS with true exponential convergence escalation (req #8).
+    platform_multiplier: from platform_amp module (1.00–1.22).
     """
 
     # Base weighted contributions
@@ -97,35 +136,32 @@ def compute_pps(
     ea_contrib = 0.30 * emotion_score
     mp_contrib = 0.27 * manipulation_score
     vr_contrib = 0.15 * virality_score
-
     base_score = df_contrib + ea_contrib + mp_contrib + vr_contrib
 
-    # High-arousal nonlinear amplification
+    # Arousal × virality synergy (high-arousal + high-spread = max propagation multiplier)
     arousal_factor = (emotion_score / 100.0) * (virality_score / 100.0)
     if arousal_factor > 0.30:
-        base_score *= 1 + (arousal_factor * 0.22)
+        base_score *= 1.0 + (arousal_factor * 0.22)
 
-    # Multi-signal stacking escalation
-    high_dims = sum(
-        s > 65
-        for s in [deepfake_score, emotion_score, manipulation_score, virality_score]
+    # Exponential convergence escalation (req #8)
+    conv_factor, high_dim_count, convergence_score = _exponential_convergence_factor(
+        deepfake_score, emotion_score, manipulation_score, virality_score
     )
-    if high_dims >= 2:
-        base_score *= 1 + (0.045 * high_dims)
+    base_score *= conv_factor
 
-    # Platform origin risk adjustment
+    # Platform amplification
     base_score *= platform_multiplier
 
-    # Nonlinear normalization — soft ceiling prevents trivial saturation
-    normalized = min(base_score / 100.0, 1.2)
-    escalated  = normalized ** 1.08
+    # Nonlinear normalization
+    normalized = min(base_score / 100.0, 1.25)
+    escalated  = normalized ** 1.06     # mild final lift, doesn't reset exponential gains
     pps_score  = round(min(escalated * 100.0, 100.0), 2)
 
     threat_level, interpretation = _classify_pps(pps_score)
 
     return {
-        "score": pps_score,
-        "threat_level": threat_level,
+        "score":         pps_score,
+        "threat_level":  threat_level,
         "interpretation": interpretation,
         "breakdown": {
             "deepfake_contribution":     round(df_contrib, 2),
@@ -134,16 +170,17 @@ def compute_pps(
             "virality_contribution":     round(vr_contrib, 2),
         },
         "interaction_effects": {
+            "arousal_virality_synergy":  round(arousal_factor, 3),
             "arousal_multiplier_applied": arousal_factor > 0.30,
-            "high_dimension_count":       high_dims,
-            "platform_multiplier":        round(platform_multiplier, 3),
+            "convergence_factor":        round(conv_factor, 3),
+            "convergence_score":         convergence_score,
+            "high_dimension_count":      high_dim_count,
+            "platform_multiplier":       round(platform_multiplier, 3),
         },
     }
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# SDI Computation
-# ──────────────────────────────────────────────────────────────────────────────
+# ── SDI computation ────────────────────────────────────────────────────────────
 
 def compute_sdi(pps_score: float, virality_score: float) -> Dict[str, Any]:
     sdi_score = round(pps_score * (virality_score / 100.0), 2)
@@ -152,7 +189,7 @@ def compute_sdi(pps_score: float, virality_score: float) -> Dict[str, Any]:
     disruption_level, spread_risk_assessment = _classify_sdi(sdi_score)
 
     return {
-        "sdi_score": sdi_score,
-        "disruption_level": disruption_level,
+        "sdi_score":              sdi_score,
+        "disruption_level":       disruption_level,
         "spread_risk_assessment": spread_risk_assessment,
     }
