@@ -66,6 +66,10 @@ function ResultDisplay({ result, showForensic = false }) {
     const ppsScore = Number(pps.score ?? 0)
     const ppsC = scoreClass(ppsScore)
 
+    // v3.4
+    const intel = result.intelligence_summary ?? {}
+    const severity = intel.severity_badge ?? {}
+
     const density = emo.density_scores ?? {}
     const triggers = prop.trigger_phrases_detected ?? prop.trigger_phrases ?? []
     const techniques = prop.persuasion_techniques_detected ?? []
@@ -107,7 +111,87 @@ function ResultDisplay({ result, showForensic = false }) {
                 </SectionCard>
             )}
 
-            {/* ── Score Grid ── */}
+            {/* ── v3.4 MODE C: Intelligence Summary ── */}
+            {(intel.signal_activation_summary || intel.severity_badge) && (
+                <SectionCard title="INTELLIGENCE SUMMARY — Threat Classification">
+
+                    {/* Signal Activation Banner */}
+                    {intel.signal_activation_summary && (
+                        <div style={{
+                            padding: '0.6rem 0.9rem',
+                            borderRadius: 7,
+                            background: 'var(--surface-2)',
+                            border: `1px solid ${severity.color ?? 'var(--border)'}`,
+                            fontSize: '0.82rem',
+                            color: 'var(--text-primary)',
+                            lineHeight: 1.6,
+                            marginBottom: 14,
+                            borderLeft: `4px solid ${severity.color ?? 'var(--accent)'}`,
+                        }}>
+                            {intel.signal_activation_summary}
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-start' }}>
+
+                        {/* Severity Badge */}
+                        {severity.label && (
+                            <div style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 8,
+                                padding: '0.4rem 0.9rem',
+                                borderRadius: 999,
+                                background: `${severity.color}22`,
+                                border: `1px solid ${severity.color}`,
+                                color: severity.color,
+                                fontWeight: 700,
+                                fontSize: '0.8rem',
+                                letterSpacing: '0.06em',
+                            }}>
+                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: severity.color, display: 'inline-block' }} />
+                                {severity.label}
+                            </div>
+                        )}
+
+                        {/* Escalation Driver */}
+                        {intel.escalation_driver && (
+                            <div className="score-card" style={{ flex: '0 0 auto', minWidth: 160 }}>
+                                <div className="score-card-label">Primary Escalation Driver</div>
+                                <div className="score-card-value score-cyan" style={{ fontSize: '0.88rem', letterSpacing: '0.02em' }}>
+                                    {intel.escalation_driver}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ΔPPS */}
+                        {intel.delta_pps_pct != null && intel.delta_pps_pct !== 0 && (
+                            <div className="score-card" style={{ flex: '0 0 auto', minWidth: 130 }}>
+                                <div className="score-card-label">ΔPPS Uplift (Convergence)</div>
+                                <div className={`score-card-value ${intel.delta_pps_pct > 0 ? 'score-high' : 'score-low'}`}>
+                                    {intel.delta_pps_pct > 0 ? '+' : ''}{intel.delta_pps_pct}%
+                                </div>
+                                <div className="score-card-detail">vs. linear baseline</div>
+                            </div>
+                        )}
+
+                        {/* Layer Convergence Index */}
+                        {intel.layer_convergence_index != null && (
+                            <div className="score-card" style={{ flex: '0 0 auto', minWidth: 155 }}>
+                                <div className="score-card-label">Layer Convergence Index</div>
+                                <div className={`score-card-value ${scoreClass(intel.layer_convergence_index).text}`}>
+                                    {Number(intel.layer_convergence_index).toFixed(1)}%
+                                </div>
+                                <div className="score-card-detail">{intel.high_layer_count ?? 0} of 6 layers &gt;60%</div>
+                                <div className="score-bar-track">
+                                    <div className={`score-bar-fill ${scoreClass(intel.layer_convergence_index).fill}`}
+                                        style={{ width: `${Math.min(intel.layer_convergence_index, 100)}%` }} />
+                                </div>
+                            </div>
+                        )}
+
+                    </div>
+                </SectionCard>
+            )}
+
             <div className="score-grid">
                 <ScoreCard
                     label="Deepfake (DF)"

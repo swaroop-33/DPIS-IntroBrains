@@ -1,7 +1,7 @@
 """
-DPIS — Pipeline Orchestrator (v3.3)
+DPIS — Pipeline Orchestrator (v3.4)
 
-Full 8-layer intelligence schema + v3.3 extensions:
+Full 8-layer intelligence schema + v3.3/v3.4 extensions:
   • Adversarial Evasion Detection
   • Calibration & Confidence Intervals
   • Credibility Erosion Index
@@ -94,13 +94,18 @@ def run_pipeline(
     ) or {}
     virality_score = _safe(virality, "virality_score", 0.0)
 
-    # ── 5. PPS Aggregation ────────────────────────────────────────────────────
+    # ── 5. PPS Aggregation ────────────────────────────────────────────────
+    # Mode C: blended_authenticity drives dynamic forensic weight in pps.py
+    blended_authenticity = max(deepfake_score, image_ai_probability)
+
     pps = compute_pps(
         deepfake_score=deepfake_score,
         emotion_score=amplification_score,
         manipulation_score=manipulation_score,
         virality_score=virality_score,
         platform_multiplier=effective_multiplier,
+        blended_authenticity=blended_authenticity,
+        evasion_score=evasion_score,
     ) or {}
     pps_score = _safe(pps, "score", 0.0)
 
@@ -135,8 +140,28 @@ def run_pipeline(
         input_type=input_type,
     )
 
-    # ── 10. PDI (internal index) ──────────────────────────────────────────────
+    # ── 10. PDI (internal index) ──────────────────────────────────────────
     pdi = _pdi(text=text, manipulation_score=manipulation_score, emotion_score=amplification_score)
+
+    # ── 11. Mode C — Intelligence Summary ────────────────────────────────────
+    # Layer Convergence Index: % of primary scored dimensions above 60%
+    _scored_dims = [
+        deepfake_score, amplification_score, manipulation_score,
+        virality_score, evasion_score,
+        credibility.get("credibility_erosion_index", 0.0),
+    ]
+    high_layers = sum(1 for s in _scored_dims if s > 60.0)
+    layer_convergence_index = round(high_layers / len(_scored_dims) * 100.0, 1)
+
+    # Signal Activation Summary
+    if high_layers >= 4:
+        _summary = f"High-risk convergence detected across {high_layers} layers. Multi-vector threat confirmed."
+    elif high_layers >= 2:
+        _summary = f"Convergent risk signals detected across {high_layers} layers. Escalation pathway is active."
+    elif high_layers == 1:
+        _summary = "Isolated risk signal detected in 1 layer. Monitoring recommended."
+    else:
+        _summary = "Risk signal below convergence threshold across all layers. No escalation detected."
 
     elapsed_ms = round((time.time() - start) * 1000, 2)
 
@@ -237,14 +262,25 @@ def run_pipeline(
 
         # Internal indices
         "indices": {
-            "psychological_density_index": pdi,
-            "effective_platform_multiplier": round(effective_multiplier, 3),
+            "psychological_density_index":    pdi,
+            "effective_platform_multiplier":  round(effective_multiplier, 3),
+        },
+
+        # v3.4 — Intelligence Summary (Mode C)
+        "intelligence_summary": {
+            "signal_activation_summary":  _summary,
+            "layer_convergence_index":    layer_convergence_index,
+            "high_layer_count":           high_layers,
+            "severity_badge":             pps.get("severity_badge", {"label": "UNKNOWN", "color": "#6b7280"}),
+            "escalation_driver":          pps.get("interaction_effects", {}).get("escalation_driver", "Unknown"),
+            "delta_pps_pct":              pps.get("interaction_effects", {}).get("delta_pps_pct", 0.0),
+            "blended_authenticity":       round(blended_authenticity, 2),
         },
 
         # Layer 8 — Performance
         "performance": {
             "execution_time_ms": elapsed_ms,
             "input_type":        input_type,
-            "dpis_version":      "3.3.0",
+            "dpis_version":      "3.4.0",
         },
     }
