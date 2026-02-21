@@ -1,21 +1,21 @@
 """
 DPIS — Advanced Multi-Modal Media Forensics Engine (v3.4)
 
-Stronger separation curves.
-Higher sensitivity.
-Nonlinear anomaly escalation.
-Cross-signal amplification.
+• Stronger separation curves
+• Nonlinear anomaly escalation
+• Cross-signal amplification
 """
 
 from __future__ import annotations
+
 import io
 import logging
-import numpy as np
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-# Optional deps
+# Optional dependencies (graceful fallback)
+
 try:
     import cv2
     _CV2_OK = True
@@ -24,7 +24,7 @@ except ImportError:
 
 try:
     import librosa
-    import soundfile as sf
+    import soundfile as sf  # noqa
     _LIBROSA_OK = True
 except ImportError:
     _LIBROSA_OK = False
@@ -35,21 +35,26 @@ try:
 except ImportError:
     _PIL_OK = False
 
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
 
 # ─────────────────────────────────────────────
 # VIDEO FORENSICS
 # ─────────────────────────────────────────────
 
 def analyze_video_frames(file_bytes: bytes) -> Dict[str, Any]:
-
-    if not _CV2_OK:
+    if not _CV2_OK or np is None:
         return {
             "deepfake_probability": 0.0,
-            "signals": ["OpenCV not installed"]
+            "signals": ["OpenCV not installed"],
         }
 
     try:
-        import tempfile, os
+        import tempfile
+        import os
 
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
             tmp.write(file_bytes)
@@ -59,7 +64,10 @@ def analyze_video_frames(file_bytes: bytes) -> Dict[str, Any]:
         os.unlink(tmp_path)
 
         if not cap.isOpened():
-            return {"deepfake_probability": 0.0, "signals": ["Cannot open video"]}
+            return {
+                "deepfake_probability": 0.0,
+                "signals": ["Cannot open video"],
+            }
 
         lap_vars = []
         temporal_diff = []
@@ -85,26 +93,32 @@ def analyze_video_frames(file_bytes: bytes) -> Dict[str, Any]:
         cap.release()
 
         if not lap_vars:
-            return {"deepfake_probability": 0.0, "signals": ["No frames sampled"]}
+            return {
+                "deepfake_probability": 0.0,
+                "signals": ["No frames sampled"],
+            }
 
-        sharpness_instability = np.std(lap_vars)
-        motion_instability = np.std(temporal_diff) if temporal_diff else 0
+        sharpness_instability = float(np.std(lap_vars))
+        motion_instability = float(np.std(temporal_diff)) if temporal_diff else 0.0
 
-        combined = (sharpness_instability / 500) + (motion_instability / 50)
+        combined = (sharpness_instability / 500.0) + (motion_instability / 50.0)
         score = min(combined ** 0.75, 1.0)
 
         return {
             "deepfake_probability": round(score, 4),
             "signals": [
                 f"Sharpness instability: {sharpness_instability:.2f}",
-                f"Temporal instability: {motion_instability:.2f}"
+                f"Temporal instability: {motion_instability:.2f}",
             ],
-            "frame_stats": {"frames_sampled": frame_count}
+            "frame_stats": {"frames_sampled": frame_count},
         }
 
     except Exception as e:
         logger.exception("Video processing failed")
-        return {"deepfake_probability": 0.0, "signals": [str(e)]}
+        return {
+            "deepfake_probability": 0.0,
+            "signals": [str(e)],
+        }
 
 
 # ─────────────────────────────────────────────
@@ -112,11 +126,10 @@ def analyze_video_frames(file_bytes: bytes) -> Dict[str, Any]:
 # ─────────────────────────────────────────────
 
 def analyze_audio_waveform(file_bytes: bytes) -> Dict[str, Any]:
-
-    if not _LIBROSA_OK:
+    if not _LIBROSA_OK or np is None:
         return {
             "spoof_probability": 0.0,
-            "signals": ["librosa not installed"]
+            "signals": ["librosa not installed"],
         }
 
     try:
@@ -127,8 +140,7 @@ def analyze_audio_waveform(file_bytes: bytes) -> Dict[str, Any]:
         zcr = float(np.mean(librosa.feature.zero_crossing_rate(y)))
         rms = float(np.mean(librosa.feature.rms(y=y)))
 
-        anomaly = (flatness * 6) + (zcr * 2) + (abs(rms - 0.1) * 3)
-
+        anomaly = (flatness * 6.0) + (zcr * 2.0) + (abs(rms - 0.1) * 3.0)
         score = min(anomaly ** 0.8, 1.0)
 
         return {
@@ -136,14 +148,17 @@ def analyze_audio_waveform(file_bytes: bytes) -> Dict[str, Any]:
             "signals": [
                 f"Spectral flatness: {flatness:.5f}",
                 f"Zero-cross rate: {zcr:.5f}",
-                f"RMS deviation: {rms:.5f}"
+                f"RMS deviation: {rms:.5f}",
             ],
-            "audio_stats": {"sample_rate": sr}
+            "audio_stats": {"sample_rate": sr},
         }
 
     except Exception as e:
         logger.exception("Audio processing failed")
-        return {"spoof_probability": 0.0, "signals": [str(e)]}
+        return {
+            "spoof_probability": 0.0,
+            "signals": [str(e)],
+        }
 
 
 # ─────────────────────────────────────────────
@@ -151,37 +166,37 @@ def analyze_audio_waveform(file_bytes: bytes) -> Dict[str, Any]:
 # ─────────────────────────────────────────────
 
 def analyze_image_artifacts(file_bytes: bytes) -> Dict[str, Any]:
-
-    if not _PIL_OK:
+    if not _PIL_OK or np is None:
         return {
             "ai_image_probability": 0.0,
-            "signals": ["Pillow not installed"]
+            "signals": ["Pillow not installed"],
         }
 
     try:
         img = Image.open(io.BytesIO(file_bytes))
         gray = np.array(img.convert("L"))
 
-        variance = np.var(gray)
+        variance = float(np.var(gray))
 
-        # entropy
         hist = np.histogram(gray, bins=256)[0]
         hist = hist / np.sum(hist)
-        entropy = -np.sum(hist * np.log2(hist + 1e-7))
+        entropy = float(-np.sum(hist * np.log2(hist + 1e-7)))
 
-        anomaly = (variance / 3000) + (entropy / 8)
-
+        anomaly = (variance / 3000.0) + (entropy / 8.0)
         score = min(anomaly ** 0.8, 1.0)
 
         return {
             "ai_image_probability": round(score, 4),
             "signals": [
                 f"Pixel variance: {variance:.2f}",
-                f"Entropy: {entropy:.2f}"
+                f"Entropy: {entropy:.2f}",
             ],
-            "image_stats": {"dimensions": f"{img.width}x{img.height}"}
+            "image_stats": {"dimensions": f"{img.width}x{img.height}"},
         }
 
     except Exception as e:
         logger.exception("Image processing failed")
-        return {"ai_image_probability": 0.0, "signals": [str(e)]}
+        return {
+            "ai_image_probability": 0.0,
+            "signals": [str(e)],
+        }
