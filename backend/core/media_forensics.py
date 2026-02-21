@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import io
 import logging
+import numpy as np
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-# Optional dependencies (graceful fallback)
+# ─────────────────────────────────────────────
+# Optional Dependencies (Graceful Fallback)
+# ─────────────────────────────────────────────
 
 try:
     import cv2
@@ -35,17 +38,13 @@ try:
 except ImportError:
     _PIL_OK = False
 
-try:
-    import numpy as np
-except ImportError:
-    np = None
-
 
 # ─────────────────────────────────────────────
 # VIDEO FORENSICS
 # ─────────────────────────────────────────────
 
 def analyze_video_frames(file_bytes: bytes) -> Dict[str, Any]:
+
     if not _CV2_OK or np is None:
         return {
             "deepfake_probability": 0.0,
@@ -80,7 +79,6 @@ def analyze_video_frames(file_bytes: bytes) -> Dict[str, Any]:
                 break
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
             lap_vars.append(cv2.Laplacian(gray, cv2.CV_64F).var())
 
             if prev_gray is not None:
@@ -126,6 +124,7 @@ def analyze_video_frames(file_bytes: bytes) -> Dict[str, Any]:
 # ─────────────────────────────────────────────
 
 def analyze_audio_waveform(file_bytes: bytes) -> Dict[str, Any]:
+
     if not _LIBROSA_OK or np is None:
         return {
             "spoof_probability": 0.0,
@@ -166,6 +165,7 @@ def analyze_audio_waveform(file_bytes: bytes) -> Dict[str, Any]:
 # ─────────────────────────────────────────────
 
 def analyze_image_artifacts(file_bytes: bytes) -> Dict[str, Any]:
+
     if not _PIL_OK or np is None:
         return {
             "ai_image_probability": 0.0,
