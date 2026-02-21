@@ -12,7 +12,7 @@ from typing import Dict, Any
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────
-# Optional Dependencies (Graceful Fallback)
+# Optional Dependencies
 # ─────────────────────────────────────────────
 
 try:
@@ -23,7 +23,7 @@ except ImportError:
 
 try:
     import librosa
-    import soundfile as sf  # noqa
+    import soundfile as sf
     _LIBROSA_OK = True
 except ImportError:
     _LIBROSA_OK = False
@@ -69,7 +69,7 @@ def analyze_video_frames(file_bytes: bytes) -> Dict[str, Any]:
         prev_gray = None
         frame_count = 0
 
-        while frame_count < 80:
+        while frame_count < 60:
             ret, frame = cap.read()
             if not ret:
                 break
@@ -169,30 +169,34 @@ def analyze_image_artifacts(file_bytes: bytes) -> Dict[str, Any]:
         }
 
     try:
-        img = Image.open(io.BytesIO(file_bytes))
-        gray = np.array(img.convert("L"))
+        image = Image.open(io.BytesIO(file_bytes)).convert("L")
+        arr = np.array(image)
 
-        variance = float(np.var(gray))
+        variance = float(np.var(arr))
+        entropy = float(
+            -np.sum(
+                (hist := np.histogram(arr, bins=256)[0] / arr.size + 1e-9)
+                * np.log2(hist)
+            )
+        )
 
-        hist = np.histogram(gray, bins=256)[0]
-        hist = hist / np.sum(hist)
-        entropy = float(-np.sum(hist * np.log2(hist + 1e-7)))
+        # NORMALIZED HEURISTIC SCORING
+        var_score = min(1.0, variance / 5000)
+        entropy_score = min(1.0, entropy / 8)
 
-        anomaly = (variance / 3000.0) + (entropy / 8.0)
-        score = min(anomaly ** 0.8, 1.0)
+        # Balanced blend
+        ai_probability = (var_score * 0.5) + (entropy_score * 0.5)
 
         return {
-            "ai_image_probability": round(score, 4),
+            "ai_image_probability": round(ai_probability, 4),
             "signals": [
-                f"Pixel variance: {variance:.2f}",
-                f"Entropy: {entropy:.2f}",
+                f"Pixel variance: {round(variance,2)}",
+                f"Entropy: {round(entropy,2)}",
             ],
-            "image_stats": {"dimensions": f"{img.width}x{img.height}"},
         }
 
     except Exception as e:
-        logger.exception("Image processing failed")
         return {
             "ai_image_probability": 0.0,
-            "signals": [str(e)],
+            "signals": [f"Image analysis error: {str(e)}"],
         }

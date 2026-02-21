@@ -3,17 +3,15 @@ import react from "@vitejs/plugin-react";
 
 // DPIS Frontend — Vite Dev Config
 //
-// Dev:  Proxy forwards /api/* → http://127.0.0.1:8000 (api/index.py via uvicorn)
-//       api/index.py mounts backend at /api, so /api/analyze → backend /analyze
+// Dev proxy:  /api/*  →  http://127.0.0.1:8000/*  (strips /api prefix)
+//   browser:  POST /api/analyze/media
+//   proxy:    POST http://127.0.0.1:8000/analyze/media   ✓ matches FastAPI route
 //
-// Prod: vercel.json routes /api/* → api/index.py serverless function (same path)
+// Works with EITHER backend entry point:
+//   python -m uvicorn backend.main:app --reload   (routes at /analyze, /analyze/media)
+//   python -m uvicorn api.index:app   --reload    (same — api/index.py re-exports backend app)
 //
-// Backend must run from project ROOT (not inside backend/):
-//   python -m uvicorn api.index:app --reload
-//   OR:
-//   python -m uvicorn backend.main:app --reload   ← if testing backend directly
-//
-// NO path rewrite — full /api/... path is forwarded, matching production exactly.
+// Prod (Vercel): vercel.json rewrites /api/* → api/index.py (Vercel strips /api itself)
 
 export default defineConfig({
     plugins: [react()],
@@ -25,8 +23,11 @@ export default defineConfig({
                 target: "http://127.0.0.1:8000",
                 changeOrigin: true,
                 secure: false,
-                // NO rewrite — /api/analyze stays as /api/analyze
-                // api/index.py mounts backend at /api → backend sees /analyze ✓
+                // Rewrite: strip /api prefix before forwarding to FastAPI
+                // /api/analyze        → /analyze
+                // /api/analyze/media  → /analyze/media
+                // /api/health         → /health
+                rewrite: (path) => path.replace(/^\/api/, ""),
             },
         },
     },

@@ -1,17 +1,19 @@
 """
-DPIS — FastAPI Backend (v3.3)
+DPIS — FastAPI Backend (v3.4)
 
 Run from project ROOT:
-    python -m uvicorn api.index:app --reload
+    python -m uvicorn backend.main:app --reload
+    python -m uvicorn api.index:app   --reload   (same app, alternate entry)
 
-Routes (mounted under /api by api/index.py):
-    GET  /           -> service info
-    GET  /health     -> health check
-    POST /analyze         -> text / transcript analysis
-    POST /analyze/media   -> multi-modal file upload + remote URL (unified ingestion)
+Routes:
+    GET  /               → service info
+    GET  /health         → health check
+    POST /analyze        → text / transcript analysis
+    POST /analyze/media  → multi-modal file upload + remote URL
 """
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 import traceback
 import time
@@ -21,11 +23,20 @@ from .pipeline import run_pipeline
 
 app = FastAPI(
     title="DPIS — Deepfake Psychological Impact Shield",
-    version="3.3.0",
+    version="3.4.0",
     description=(
         "Multi-modal forensic + adversarial psychological intelligence engine. "
         "Supports text, image, audio, video, and remote URL ingestion."
     ),
+)
+
+# CORS — allow all origins (hackathon demo; Vite proxy also handles dev)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Per-type upload size caps (MB)
